@@ -1,0 +1,32 @@
+{
+  "app": "codelithe",
+  "mode": "native_webkitgtk_with_live_chatgpt_oauth",
+  "version": "ea8c53c",
+  "model": "gpt-6.2-sol",
+  "effort": "medium",
+  "phases": {
+    "single": {
+      "seconds": 40.636,
+      "cpu_seconds": 7.254,
+      "cpu_pct_one_core": 17.85,
+      "pss_median_mib": 217.4,
+      "pss_peak_mib": 222.3,
+      "samples": 153,
+      "pss_incomplete_samples": 0,
+      "cgroup_memory_peak_sample_mib": 174.2,
+      "disk_method": "proc_io_sampled_lower_bound",
+      "disk_process_lower_bound": {
+        "read_bytes": 0,
+        "write_bytes": 22511616
+      },
+      "verification": [
+        {
+          "fixture": "single",
+          "passed": true
+        }
+      ],
+      "approved_test_commands": 1,
+      "provider_requests": 11
+    }
+  }
+}

@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="#download">Download</a> · <a href="#get-started">Get started</a> · <a href="#what-it-can-do">Features</a> · <a href="#safety-you-control">Safety</a> · <a href="#extend-a-project">Extensions</a> · <a href="#architecture">Architecture</a>
+  <a href="#download">Download</a> · <a href="#get-started">Get started</a> · <a href="#what-it-can-do">Features</a> · <a href="#safety-you-control">Safety</a> · <a href="#extend-a-project">Extensions</a> · <a href="#architecture">Architecture</a> · <a href="benchmarks/desktop/">Benchmark</a>
 </p>
 
 ---
