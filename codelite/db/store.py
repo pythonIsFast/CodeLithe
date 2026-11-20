@@ -91,6 +91,27 @@ def _now() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
 
 
+def _track_tool_calls(payload_text: str, open_calls: set[str]) -> None:
+    """Maintain a set of ``function_call`` ids opened but not yet output.
+
+    Used to keep pagination pages from ending between a tool call and its
+    output; a corrupt payload is ignored rather than aborting the walk.
+    """
+    try:
+        item = json.loads(payload_text)
+    except ValueError:
+        return
+    if not isinstance(item, dict):
+        return
+    kind = item.get("type")
+    if kind == "function_call":
+        call_id = item.get("call_id") or item.get("id")
+        if call_id:
+            open_calls.add(call_id)
+    elif kind == "function_call_output":
+        open_calls.discard(item.get("call_id"))
+
+
 @dataclass
 class Conversation:
     id: str
@@ -402,14 +423,58 @@ class Store:
         """Just the payloads -- what the model gets sent as ``input``."""
         return [entry["payload"] for entry in self.load_entries(conversation_id)]
 
-    def load_entries(self, conversation_id: str) -> list[dict[str, Any]]:
-        """Payloads plus their stored timestamp and metadata, for the UI."""
+    def has_items_before(self, conversation_id: str, item_id: int) -> bool:
+        """Whether ``item_id`` has older siblings -- the pagination cursor."""
+        if item_id is None:
+            return False
         with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT payload, created_at, meta FROM items "
-                "WHERE conversation_id = ? ORDER BY id",
-                (conversation_id,),
-            ).fetchall()
+            row = conn.execute(
+                "SELECT 1 FROM items WHERE conversation_id = ? AND id < ? LIMIT 1",
+                (conversation_id, item_id),
+            ).fetchone()
+        return row is not None
+
+    def load_entries(
+        self,
+        conversation_id: str,
+        limit: int | None = None,
+        before_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Payloads plus their stored timestamp and metadata, for the UI.
+
+        Without ``limit`` the whole transcript is returned. With ``limit``
+        (and optionally ``before_id``) only a window comes back: the newest
+        ``limit`` items with ``id < before_id`` (all items if no cursor is
+        given), oldest first. The UI opens a conversation with just the
+        newest page and prepends older pages while the user scrolls up.
+
+        A page is extended past its window until every ``function_call``
+        it opens is closed by its matching ``function_call_output`` -- a
+        split between a call and its output would leave a dangling tool
+        row. The overlap with the next-newer page is harmless: the client
+        skips item ids it has already rendered.
+        """
+        with self._connect() as conn:
+            if limit is None and before_id is None:
+                rows = conn.execute(
+                    "SELECT id, payload, created_at, meta FROM items "
+                    "WHERE conversation_id = ? ORDER BY id",
+                    (conversation_id,),
+                ).fetchall()
+            else:
+                where = "conversation_id = ?"
+                params: list[Any] = [conversation_id]
+                if before_id is not None:
+                    where += " AND id < ?"
+                    params.append(before_id)
+                rows = conn.execute(
+                    f"SELECT id, payload, created_at, meta FROM items "
+                    f"WHERE {where} ORDER BY id DESC LIMIT ?",
+                    (*params, limit),
+                ).fetchall()
+                rows = rows[::-1]
+                self._extend_page_to_closed_calls(conn, conversation_id, rows)
+
         entries: list[dict[str, Any]] = []
         for row in rows:
             try:
@@ -422,12 +487,42 @@ class Store:
                 meta = {}
             entries.append(
                 {
+                    "id": row["id"],
                     "payload": payload,
                     "created_at": row["created_at"],
                     "meta": meta if isinstance(meta, dict) else {},
                 }
             )
         return entries
+
+    @staticmethod
+    def _extend_page_to_closed_calls(
+        conn: sqlite3.Connection,
+        conversation_id: str,
+        rows: list[sqlite3.Row],
+    ) -> None:
+        """Append rows after ``rows`` until no open function_call remains.
+
+        Rows is a page window ending at its newest edge; a ``function_call``
+        whose output sits in the next-newer page would render as a tool row
+        without output. Walks forward (bounded) until the call set closes.
+        """
+        open_calls: set[str] = set()
+        for row in rows:
+            _track_tool_calls(row["payload"], open_calls)
+        if not open_calls:
+            return
+        extra = conn.execute(
+            "SELECT id, payload, created_at, meta FROM items "
+            "WHERE conversation_id = ? AND id > ? ORDER BY id LIMIT 500",
+            (conversation_id, rows[-1]["id"]),
+        ).fetchall()
+        for row in extra:
+            rows.append(row)
+            _track_tool_calls(row["payload"], open_calls)
+            if not open_calls:
+                break
+
 
     def count_items(self, conversation_id: str) -> int:
         with self._connect() as conn:

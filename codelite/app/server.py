@@ -433,17 +433,49 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
         if error:
             return error
         runtime = rt()
+        # Optional pagination: without params the whole transcript is
+        # returned (reconcile paths rely on that); the UI opens a chat with
+        # only the newest page and prepends older ones while scrolling.
+        limit = request.args.get("limit", type=int)
+        before = request.args.get("before", type=int)
+        entries = runtime.store.load_entries(conversation_id, limit=limit, before_id=before)
+        oldest = min((entry["id"] for entry in entries), default=None)
+        has_more = limit is not None and runtime.store.has_items_before(
+            conversation_id, oldest
+        )
         return jsonify(
             {
                 **conversation.as_dict(),
                 # Entries rather than bare payloads: the UI needs each item's
                 # timestamp and token count for the per-message footer.
-                "entries": runtime.store.load_entries(conversation_id),
+                "entries": entries,
+                "has_more": has_more,
                 "context_window": _context_window(runtime, conversation.model),
                 "busy": runtime.is_busy(conversation),
                 "pending_permissions": runtime.pending_permissions(conversation),
             }
         )
+
+    @app.get("/api/conversations/<conversation_id>/entries")
+    def get_conversation_entries(conversation_id: str):
+        """One page of transcript items, oldest first -- pagination cursor.
+
+        The UI opens a chat with the newest page and prepends older pages
+        while the user scrolls up, so a long transcript never blocks the
+        conversation from being shown.
+        """
+        conversation, error = _conversation_or_404(conversation_id)
+        if error:
+            return error
+        runtime = rt()
+        limit = request.args.get("limit", type=int)
+        before = request.args.get("before", type=int)
+        entries = runtime.store.load_entries(conversation_id, limit=limit, before_id=before)
+        oldest = min((entry["id"] for entry in entries), default=None)
+        has_more = limit is not None and runtime.store.has_items_before(
+            conversation_id, oldest
+        )
+        return jsonify({"entries": entries, "has_more": has_more})
 
     @app.get("/api/conversations/<conversation_id>/files/<path:file_path>")
     def conversation_file(conversation_id: str, file_path: str):
