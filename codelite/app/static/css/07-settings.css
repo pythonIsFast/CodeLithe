@@ -261,6 +261,17 @@
 .behaviour-control input.out-of-range { border-color: var(--danger); }
 
 .behaviour-control .custom-select { min-width: 150px; }
+.settings-content .custom-select-menu {
+  top: calc(100% + 6px);
+  bottom: auto;
+  right: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.settings-content .custom-select.opens-up .custom-select-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
 
 .setting-toggle { position: relative; display: inline-flex; cursor: pointer; }
 .setting-toggle input { position: absolute; opacity: 0; pointer-events: none; }

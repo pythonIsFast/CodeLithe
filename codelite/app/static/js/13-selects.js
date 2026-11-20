@@ -50,6 +50,21 @@ function changeCustomSelect(select, direction) {
   select.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
+function fitSettingsSelect(picker) {
+  const scrollport = picker.root.closest(".settings-content");
+  if (!scrollport) return;
+  const bounds = scrollport.getBoundingClientRect();
+  const anchor = picker.root.getBoundingClientRect();
+  const gap = 6;
+  const above = anchor.top - bounds.top - gap;
+  const below = bounds.bottom - anchor.bottom - gap;
+
+  picker.menu.style.maxHeight = "";
+  const openUp = picker.menu.offsetHeight > below && above > below;
+  picker.root.classList.toggle("opens-up", openUp);
+  picker.menu.style.maxHeight = `${Math.max(0, Math.floor(openUp ? above : below))}px`;
+}
+
 /** Wire one picker into the customSelects map. Safe to call more than once
  * for the same root (behaviour settings rebuild their pickers on every
  * render), since it always re-reads the current DOM nodes. */
@@ -66,7 +81,17 @@ function initCustomSelect(root) {
     root.classList.toggle("open", opening);
     trigger.setAttribute("aria-expanded", String(opening));
     menu.hidden = !opening;
-    if (opening) menu.querySelector("[aria-selected='true']")?.focus();
+    if (opening) {
+      fitSettingsSelect(picker);
+      const selected = menu.querySelector("[aria-selected='true']");
+      if (selected && root.closest(".settings-content")) {
+        // Reveal the selection within the menu without scrolling the page.
+        menu.scrollTop = selected.offsetTop - (menu.clientHeight - selected.offsetHeight) / 2;
+        selected.focus({ preventScroll: true });
+      } else {
+        selected?.focus();
+      }
+    }
   });
   trigger.addEventListener("keydown", (event) => {
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
