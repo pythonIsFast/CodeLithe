@@ -7,6 +7,7 @@ function startClock() {
     for (const node of el.messages.querySelectorAll(".msg-time[data-at]")) {
       node.textContent = relativeTime(node.dataset.at);
     }
+    tickGoPlanUsage();
   }, 60_000);
 }
 

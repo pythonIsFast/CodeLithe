@@ -93,7 +93,7 @@ function paintPlanWindows(target, windows, emptyMessage) {
     target.appendChild(note);
     return;
   }
-  for (const { label, percent, resetAt, description } of windows) {
+  for (const { label, percent, resetAt, description, valueText } of windows) {
     const row = document.createElement("div");
     row.className = "detail-plan-window";
     row.classList.toggle("recommended", Boolean(description));
@@ -101,11 +101,11 @@ function paintPlanWindows(target, windows, emptyMessage) {
     title.textContent = label;
     const value = document.createElement("span");
     value.className = "detail-value";
-    value.textContent = `${Math.round(percent)}% used`;
+    value.textContent = valueText || `${Math.round(percent)}% used`;
     const meter = document.createElement("progress");
     meter.max = 100;
     meter.value = percent;
-    meter.setAttribute("aria-label", `${label} allowance used`);
+    meter.setAttribute("aria-label", valueText ? `${label} share of monthly limit` : `${label} allowance used`);
     row.append(title, value, meter);
     const caption = description || planResetLabel(resetAt);
     if (caption) {
@@ -136,7 +136,30 @@ function updatePlanUsage(usage) {
   syncPlanCardVisibility();
 }
 
+function weeklyGoRecommendation(monthly, now = Date.now()) {
+  if (!Number.isFinite(monthly?.percent)) return null;
+  const remainingTime = Date.parse(monthly.resets_at) - now;
+  if (!(remainingTime > 0)) return null;
+
+  const week = 7 * 24 * 60 * 60 * 1000;
+  const remainingBudget = Math.max(0, 100 - monthly.percent);
+  // Spread the unspent allowance evenly over the actual time until reset.
+  // Spending this share in the next week preserves the same pace afterwards.
+  const percent = remainingBudget * Math.min(1, week / remainingTime);
+  return {
+    label: "Weekly recommended",
+    percent,
+    valueText: percent > 0 && percent < 0.1
+      ? "<0.1%"
+      : `${percent.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`,
+    description: remainingTime <= week
+      ? "Share of the monthly limit to spend before reset."
+      : "Share of the monthly limit to spend over the next 7 days.",
+  };
+}
+
 function updateGoPlanUsage(usage, error = "") {
+  state.goPlanUsage = usage;
   const windows = [];
   for (const [key, label] of [["rolling", "5-hour"], ["weekly", "Weekly"], ["monthly", "Monthly"]]) {
     const period = usage?.[key];
@@ -144,16 +167,8 @@ function updateGoPlanUsage(usage, error = "") {
       windows.push({ label, percent: period.percent, resetAt: period.resets_at });
     }
   }
-  if (Number.isFinite(usage?.monthly?.percent)) {
-    // A quarter of the monthly allowance is the recommendation. The numerator
-    // is month-to-date usage because the API does not report weekly spend in
-    // units of the monthly budget.
-    windows.push({
-      label: "Weekly recommended",
-      percent: usage.monthly.percent * 4,
-      description: "Month-to-date use against ¼ of the monthly limit.",
-    });
-  }
+  const recommendation = weeklyGoRecommendation(usage?.monthly);
+  if (recommendation) windows.push(recommendation);
   const configured = state.auth?.opencode_go_usage;
   el.detailPlanGo.hidden = !(state.auth?.opencode_go || configured);
   const empty = configured ? "Waiting for OpenCode Go usage." : "Add a service account key in Settings.";
@@ -183,6 +198,14 @@ async function fetchGoPlanUsage() {
 
 function loadGoPlanUsage() {
   return fetchGoPlanUsage().catch(() => {});
+}
+
+function tickGoPlanUsage() {
+  const usage = state.goPlanUsage;
+  const reset = Date.parse(usage?.monthly?.resets_at);
+  if (!Number.isFinite(reset)) return;
+  updateGoPlanUsage(usage);
+  if (reset <= Date.now()) loadGoPlanUsage();
 }
 
 async function loadPlanUsage() {
