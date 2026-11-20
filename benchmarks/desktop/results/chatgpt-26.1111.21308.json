@@ -1,0 +1,88 @@
+[
+  {
+    "app": "chatgpt",
+    "version": "26.1111.21308",
+    "model": null,
+    "effort": null,
+    "warmup": false,
+    "idle_target_seconds": 60,
+    "phases": {
+      "startup_manual": {
+        "seconds": 6.049,
+        "cpu_seconds": 6.717,
+        "cpu_pct_one_core": 111.05,
+        "pss_median_mib": 425.3,
+        "pss_peak_mib": 711.3,
+        "samples": 23,
+        "pss_incomplete_samples": 0,
+        "cgroup_memory_peak_sample_mib": 631.5,
+        "disk_method": "proc_io_sampled_lower_bound",
+        "disk_process_lower_bound": {
+          "read_bytes": 0,
+          "write_bytes": 602112
+        }
+      },
+      "idle": {
+        "seconds": 60.044,
+        "cpu_seconds": 5.756,
+        "cpu_pct_one_core": 9.59,
+        "pss_median_mib": 916.0,
+        "pss_peak_mib": 1170.3,
+        "samples": 204,
+        "pss_incomplete_samples": 0,
+        "cgroup_memory_peak_sample_mib": 1088.3,
+        "disk_method": "proc_io_sampled_lower_bound",
+        "disk_process_lower_bound": {
+          "read_bytes": 0,
+          "write_bytes": 1933312
+        }
+      },
+      "single": {
+        "seconds": 29.649,
+        "cpu_seconds": 9.498,
+        "cpu_pct_one_core": 32.04,
+        "pss_median_mib": 1036.7,
+        "pss_peak_mib": 1056.7,
+        "samples": 100,
+        "pss_incomplete_samples": 0,
+        "cgroup_memory_peak_sample_mib": 980.8,
+        "disk_method": "proc_io_sampled_lower_bound",
+        "disk_process_lower_bound": {
+          "read_bytes": 0,
+          "write_bytes": 163840
+        },
+        "verification": [
+          {
+            "fixture": "single",
+            "passed": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "app": "chatgpt",
+    "version": "26.1111.21308",
+    "model": null,
+    "effort": null,
+    "warmup": false,
+    "idle_target_seconds": 60,
+    "phases": {
+      "startup_manual": {
+        "seconds": 13.622,
+        "cpu_seconds": 10.964,
+        "cpu_pct_one_core": 80.49,
+        "pss_median_mib": 687.9,
+        "pss_peak_mib": 1157.2,
+        "samples": 49,
+        "pss_incomplete_samples": 1,
+        "cgroup_memory_peak_sample_mib": 1067.9,
+        "disk_method": "proc_io_sampled_lower_bound",
+        "disk_process_lower_bound": {
+          "read_bytes": 0,
+          "write_bytes": 839680
+        }
+      }
+    }
+  }
+]

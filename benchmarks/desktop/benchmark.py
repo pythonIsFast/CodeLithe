@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import nullcontext
 import json
 import os
 from pathlib import Path
@@ -207,16 +208,18 @@ def private_directory(path):
         raise RuntimeError(f"Expected a private directory owned by the current user: {path}")
 
 
-def launch(command):
+def launch(command, log_path=None):
     unit = f"desktop-benchmark-{uuid4().hex[:12]}.scope"
-    process = subprocess.Popen(
-        [
-            "systemd-run", "--user", "--scope", "--quiet", "--unit", unit,
-            "--property=CPUAccounting=yes", "--property=MemoryAccounting=yes",
-            "--property=IOAccounting=yes", *command,
-        ],
-        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
+    log = log_path.open("wb") if log_path is not None else nullcontext(subprocess.DEVNULL)
+    with log as output:
+        process = subprocess.Popen(
+            [
+                "systemd-run", "--user", "--scope", "--quiet", "--unit", unit,
+                "--property=CPUAccounting=yes", "--property=MemoryAccounting=yes",
+                "--property=IOAccounting=yes", *command,
+            ],
+            stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
+        )
     return unit, process
 
 
@@ -284,17 +287,18 @@ def version(app):
 
 def run(args):
     preflight()
-    if live_chatgpt_pids():
+    if args.app == "chatgpt" and live_chatgpt_pids():
         raise RuntimeError("ChatGPT is still running. Quit it from the app menu or press Ctrl+Q.")
     private_directory(RESULTS)
     workspace = Path(tempfile.mkdtemp(prefix=f"{args.app}-", dir=RESULTS))
-    folders = {name: fixture(workspace / name) for name in ("single", "parallel-A", "parallel-B")}
+    project = fixture(workspace / "single")
     result = {
         "app": args.app, "version": version(args.app), "model": args.model,
         "effort": args.effort, "warmup": args.warmup, "idle_target_seconds": args.idle_seconds,
         "phases": {},
     }
     report = workspace / "result.json"
+    log_path = workspace / "launch.log"
 
     def record(name, start, end, samples):
         result["phases"][name] = summary(start, end, samples)
@@ -303,13 +307,14 @@ def run(args):
 
     command = command_for(args.app)
     print(f"Result file: {report}")
+    print(f"Local app log for troubleshooting: {log_path}")
     input("Press Enter to launch the app. Return here once the composer is usable. ")
     started = {
         "at": time.monotonic(),
         "boot_ticks": int(time.clock_gettime(time.CLOCK_BOOTTIME) * CLOCK_TICKS),
         "cpu_us": 0, "io": {}, "proc_io": {},
     }
-    unit, process = launch(command)
+    unit, process = launch(command, log_path)
     try:
         group = scope_path(unit, process)
         print("Once the composer is usable, return to the terminal and press Enter.", flush=True)
@@ -329,19 +334,17 @@ def run(args):
         end, samples = measure(group, args.idle_seconds)
         record("idle", start, end, samples)
 
-        print(f"\nTask for all chats:\n{PROMPT}\n")
-        for phase, names in (("single", ("single",)), ("parallel", ("parallel-A", "parallel-B"))):
-            for name in names:
-                print(f"Open a new local chat for this folder: {folders[name]}")
-            print("Select the model and reasoning effort, then paste the prompt into each composer.")
-            input("Press Enter to start measuring, then switch to the app and submit the prompts. ")
+        print(f"\nOpen a new local chat for this folder: {project}")
+        print(f"Select the model and reasoning effort, then paste this prompt:\n{PROMPT}\n")
+        choice = input("Press Enter to start measuring or type s to skip the coding task. ")
+        if choice.strip().lower() != "s":
             start = boundary(group)
-            print("Once all responses finish, return to the terminal and press Enter.", flush=True)
+            print("Submit the prompt in the app. Return here and press Enter when the chat finishes.", flush=True)
             end, samples = measure(group)
-            record(phase, start, end, samples)
-            result["phases"][phase]["verification"] = verify(folders[name] for name in names)
+            record("single", start, end, samples)
+            result["phases"]["single"]["verification"] = verify([project])
             report.write_text(json.dumps(result, indent=2) + "\n")
-            print("Tests:", result["phases"][phase]["verification"])
+            print("Tests:", result["phases"]["single"]["verification"])
 
         print(f"\nBenchmark complete. To share this run, use: {report}")
         input("Quit the app normally, then press Enter. ")
@@ -356,6 +359,7 @@ def show_report():
     runs = []
     for path in reports:
         item = json.loads(path.read_text())
+        item["phases"].pop("parallel", None)  # Omit the retired phase from older reports too.
         runs.append(item)
         marker = " (warm-up)" if item["warmup"] else ""
         print(f"\n{item['app']} {item['version']}{marker} | {path}")
