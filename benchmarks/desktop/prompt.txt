@@ -1,0 +1,1 @@
+Read intervals.py and test_intervals.py. Run python3 -m unittest -q in the project directory. Implement merge_intervals by editing only intervals.py, then run the same test command again. Use the Python standard library. Summarize the change and the final test result in at most three sentences.
