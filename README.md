@@ -48,7 +48,7 @@ CodeLithe and ChatGPT Desktop in local Codex mode were measured on the same Zori
 
 </details>
 
-ChatGPT used manual timing markers. CodeLithe used automatic markers and a scripted provider for startup and idle. Both coding runs used **GPT‑6.2 Sol** with a live provider. CodeLithe used Medium reasoning effort. The ChatGPT reasoning effort was unrecorded. These are measurements from one machine and one coding run per app.
+ChatGPT used manual timing markers. CodeLithe used automatic markers and a scripted provider for startup and idle. Both coding runs used **GPT‑6.2 Sol with Medium reasoning effort** against a live provider. These are measurements from one machine and one coding run per app.
 
 [Full results, raw data, and reproduction steps](benchmarks/desktop/README.md)
 

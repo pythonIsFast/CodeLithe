@@ -25,7 +25,7 @@ Raw measurements are available for [ChatGPT](results/chatgpt-26.1111.21308.json)
 
 ![In the coding task, ChatGPT and CodeLithe finished in 29.65 and 40.64 seconds, used 1,036.7 and 217.4 MiB median PSS, and consumed 9.50 and 7.25 CPU seconds, respectively.](results/coding-comparison.png)
 
-| Metric | ChatGPT Desktop | CodeLithe with GPT-6.2 Sol, Medium |
+| Metric | ChatGPT Desktop | CodeLithe |
 | --- | ---: | ---: |
 | Completion time | 29.65 s | 40.64 s |
 | RAM, median PSS | 1,036.7 MiB | 217.4 MiB |
@@ -36,7 +36,7 @@ Raw measurements are available for [ChatGPT](results/chatgpt-26.1111.21308.json)
 | Disk write, observed lower bound | 163,840 B | 22,511,616 B |
 | Fixture tests | Passed | Passed |
 
-Both apps ran the same coding task with GPT-6.2 Sol against a live provider. ChatGPT used manual terminal markers, and its reasoning effort was unrecorded. CodeLithe used automatic task boundaries and sent every model request with Medium reasoning effort. See the [CodeLithe coding run](results/codelithe-ea8c53c-gpt-6.2-sol-medium.json) for the raw measurements.
+Both apps ran the same coding task with GPT-6.2 Sol and Medium reasoning effort against a live provider. ChatGPT used manual terminal markers. CodeLithe used automatic task boundaries. See the [CodeLithe coding run](results/codelithe-ea8c53c-gpt-6.2-sol-medium.json) for the raw measurements.
 
 ## Prerequisites
 

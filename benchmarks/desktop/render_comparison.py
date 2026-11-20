@@ -91,7 +91,7 @@ def main():
             ("Total CPU time", "CPU seconds across the app",
              tuple(run["cpu_seconds"] for run in coding), " s", ".2f"),
         ],
-        "Both ran GPT-6.2 Sol. CodeLithe used Medium. ChatGPT reasoning effort was unrecorded.",
+        "Both apps used GPT-6.2 Sol with Medium reasoning effort.",
         "coding-comparison.png",
     )
 

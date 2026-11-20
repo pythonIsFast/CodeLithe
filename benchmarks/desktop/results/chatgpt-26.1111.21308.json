@@ -3,7 +3,7 @@
     "app": "chatgpt",
     "version": "26.1111.21308",
     "model": "gpt-6.2-sol",
-    "effort": null,
+    "effort": "medium",
     "warmup": false,
     "idle_target_seconds": 60,
     "phases": {
