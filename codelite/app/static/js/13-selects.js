@@ -19,7 +19,8 @@ function renderCustomSelect(select) {
   const picker = customSelects.get(select);
   if (!picker) return;
   const selected = select.selectedOptions[0];
-  picker.trigger.textContent = selected?.textContent || "Select…";
+  picker.trigger.textContent = selected?.textContent ||
+    (select === el.modelSelect && state.loadingModels ? "Loading models…" : "Select…");
   picker.menu.replaceChildren();
   for (const option of select.options) {
     if (option.hidden || option.disabled) continue;

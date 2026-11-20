@@ -27,7 +27,6 @@ import base64
 import inspect
 import logging
 import os
-import socket
 import subprocess
 import sys
 import threading
@@ -56,8 +55,6 @@ from .server import create_app
 
 logger = logging.getLogger(__name__)
 
-STARTUP_TIMEOUT_SECONDS = 15.0
-
 #: How long the interface gets to report itself ready before a screenshot is
 #: taken anyway -- a slow or failing front end must not hang the run.
 SCREENSHOT_READY_TIMEOUT_SECONDS = 15.0
@@ -68,61 +65,23 @@ SCREENSHOT_DELAY_SECONDS = 2.0
 
 
 def serve_in_background(config: AppConfig) -> threading.Thread:
-    """Start the Flask server in a daemon thread and wait until it accepts connections."""
+    """Bind the local server before opening the window."""
+    from werkzeug.serving import make_server
+
     app = create_app(config)
-
-    # Werkzeug's dev server is right for a single local user; silence its
-    # request log so the terminal stays readable.
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
+    try:
+        # Binding happens here, so the first WebView request can already be
+        # queued by the listener. No polling delay or probe socket is needed.
+        server = make_server(config.host, config.port, app, threaded=True)
+    except (OSError, SystemExit) as error:
+        raise RuntimeError(
+            f"Could not start the CodeLithe server on {config.host}:{config.port}."
+        ) from error
 
-    # A --windowed build has no console, so an exception raised inside the
-    # daemon thread (most commonly a bind failure -- the port is taken, or on
-    # Windows blocked by a Hyper-V/WSL dynamic port exclusion range) would
-    # otherwise vanish silently and the app would just sit there for the
-    # full startup timeout before quitting with no visible sign of why.
-    server_error: list[BaseException] = []
-
-    def _serve() -> None:
-        try:
-            app.run(
-                host=config.host,
-                port=config.port,
-                threaded=True,
-                debug=False,
-                use_reloader=False,
-            )
-        except BaseException as error:  # noqa: BLE001 - reported to the main thread, not swallowed
-            server_error.append(error)
-
-    thread = threading.Thread(target=_serve, name="codelite-server", daemon=True)
+    thread = threading.Thread(target=server.serve_forever, name="codelite-server", daemon=True)
     thread.start()
-    _wait_for_port(config.host, config.port, thread, server_error)
     return thread
-
-
-def _wait_for_port(
-    host: str, port: int, thread: threading.Thread, server_error: list[BaseException]
-) -> None:
-    deadline = time.monotonic() + STARTUP_TIMEOUT_SECONDS
-    while time.monotonic() < deadline:
-        if server_error:
-            raise RuntimeError(
-                f"The CodeLithe server could not start on {host}:{port}: "
-                f"{server_error[0]}"
-            ) from server_error[0]
-        if not thread.is_alive():
-            raise RuntimeError(
-                f"The CodeLithe server on {host}:{port} exited unexpectedly during startup."
-            )
-        with socket.socket() as probe:
-            probe.settimeout(0.4)
-            if probe.connect_ex((host, port)) == 0:
-                return
-        time.sleep(0.1)
-    raise RuntimeError(
-        f"The CodeLithe server did not start on {host}:{port} within "
-        f"{STARTUP_TIMEOUT_SECONDS:.0f}s."
-    )
 
 
 class JsApi:

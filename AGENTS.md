@@ -65,8 +65,8 @@ natives OS-Webview als Fenster (kein Electron). Apache-2.0, UI-Texte Englisch.
 
 ### `codelite/app/` – Fenster + HTTP + UI
 
-- **window.py** – `serve_in_background()` (Flask in Daemon-Thread,
-  `_wait_for_port()` mit 15s-Timeout), `run()`: headless → block forever;
+- **window.py** – `serve_in_background()` bindet den Werkzeug-Server vor dem
+  Start des Daemon-Threads. `run()`: headless → block forever;
   sonst WebView2-Registry-Check (Windows), GTK-Identität
   (`GLib.set_prgname("code-lite")`), `webview.create_window(js_api=JsApi())`,
   `icon`-Parameter nur wenn die Signatur ihn hat (pywebview-5.0.x).
@@ -105,7 +105,9 @@ natives OS-Webview als Fenster (kein Electron). Apache-2.0, UI-Texte Englisch.
 
 #### templates/ + static (kein Build-Step!)
 
-- `index.html` dünn: 8 CSS- und 15 JS-Dateien per Jinja-Loop, Partials
+- `index.html` lädt je ein CSS- und JS-Bundle, das Flask ohne Build-Schritt
+  aus den nummerierten Dateien zusammensetzt. Lokaler Startup-Snapshot im
+  HTML, Modellkatalog asynchron. Partials
   `sidebar/topbar/chat/details/dialogs/auth/settings.html`; dazu
   `remote_login.html` eigenständig.
 - **JS (Ladeordnung = Reihenfolge, gemeinsamer globaler Scope):**
@@ -315,8 +317,8 @@ natives OS-Webview als Fenster (kein Electron). Apache-2.0, UI-Texte Englisch.
   numerischer Reihenfolge**, die sich absichtlich einen globalen Scope
   teilen. Regeln:
   - keine doppelten Top-Level-Namen über Dateien hinweg,
-  - Reihenfolge in `index.html` ist die Ladeordnung (`init()` erst in
-    `15-bootstrap.js`),
+  - numerische Sortierung im Startup-Bundle ist die Ladeordnung
+    (`init()` erst in `15-bootstrap.js`),
   - DOM-Referenzen zentral in `el` (`01-core.js`), Zustand in `state`.
 - `static/css/01-base.css` … `08-responsive.css`: gleiche Reihenfolge-Logik,
   Design-Tokens liegen in `01-base.css`.

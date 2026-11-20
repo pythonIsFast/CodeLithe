@@ -94,7 +94,12 @@ class Session:
         if is_custom_model(model):
             return {"efforts": [], "default_effort": "", "fast": False, "flex": False}
         if is_go_model(model):
-            return {**self.opencode_go.reasoning_capabilities(model), "fast": False, "flex": False}
+            return {
+                **self.opencode_go.reasoning_capabilities(model),
+                "context_window": self.context_window(model),
+                "fast": False,
+                "flex": False,
+            }
         if self.use_pollinations_free:
             return {"efforts": [], "default_effort": "", "fast": False, "flex": False}
         info = self._transport.resolve_model_info(model)
@@ -104,6 +109,7 @@ class Session:
         return {
             "efforts": list(info.supported_reasoning_levels),
             "default_effort": info.default_reasoning_level or "",
+            "context_window": info.max_context_window or info.context_window,
             "fast": info.supports_fast and not eu_astra,
             "fast_unavailable_reason": (
                 "Fast mode is unavailable for GPT-6 Astra with EU data residency."

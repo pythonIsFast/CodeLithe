@@ -9,11 +9,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CodeLithe</title>
   <link rel="icon" href="{{ url_for('static', filename='icon.png') }}" />
-  {% set stylesheets = ["01-base", "02-sidebar", "03-layout", "04-messages",
-                        "05-composer", "06-dialogs", "07-settings", "08-responsive"] %}
-  {% for sheet in stylesheets %}
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/' ~ sheet ~ '.css') }}" />
-  {% endfor %}
+  <link rel="stylesheet" href="{{ url_for('startup_assets', kind='css') }}" />
+  <script defer src="{{ url_for('startup_assets', kind='js') }}"></script>
 </head>
 <body>
   <div class="app" id="app">
@@ -34,13 +31,7 @@
   {% include "partials/settings.html" %}
 
   <div class="toast" id="toast" hidden></div>
+  <script id="startup-data" type="application/json">{{ startup | tojson }}</script>
 
-  {% set scripts = ["01-core", "02-auth", "03-settings", "04-behaviour",
-                    "05-messages", "06-tools", "07-details", "08-conversations",
-                    "09-usage", "10-stream", "11-models", "12-composer",
-                    "13-selects", "14-events", "15-bootstrap"] %}
-  {% for script in scripts %}
-  <script src="{{ url_for('static', filename='js/' ~ script ~ '.js') }}"></script>
-  {% endfor %}
 </body>
 </html>

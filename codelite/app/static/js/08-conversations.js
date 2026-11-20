@@ -305,17 +305,21 @@ async function loadConversations() {
 
 
 async function openConversation(conversationId) {
+  const request = ++state.conversationRequest;
   // Only the newest page of the transcript comes with the open: a long
   // history must not block the conversation from being shown. Older pages
   // load while the user scrolls up (see `maybeLoadOlderEntries`).
   const data = await get(
     `/api/conversations/${conversationId}?limit=${TRANSCRIPT_PAGE_SIZE}`
   ).catch((error) => {
-    toast(error.message, true);
+    if (request === state.conversationRequest) toast(error.message, true);
     return null;
   });
-  if (!data) return;
+  if (!data || request !== state.conversationRequest) return;
+  showConversation(data);
+}
 
+function showConversation(data) {
   const wasDraft = Boolean(state.draft);
   state.draft = null;
   state.active = data;
@@ -350,16 +354,16 @@ async function openConversation(conversationId) {
   state.entryIds = new Set();
   state.entryCursor = null;
   state.entryHasMore = Boolean(data.has_more);
-  renderEntries(data.entries || [], Boolean(data.has_more));
+  renderEntries(data.entries || [], Boolean(data.has_more), false);
   renderConversationList();
   refreshUsageFromConversation();
   setBusy(Boolean(data.busy));
-  connectStream(conversationId);
+  connectStream(data.id);
 
   for (const pending of data.pending_permissions || []) state.permissionQueue.push(pending);
   showNextPermission();
   updateSendState();
-  el.prompt.focus();
+  scheduleSessionLayout();
 }
 
 /**

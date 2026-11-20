@@ -11,27 +11,52 @@ function startClock() {
   }, 60_000);
 }
 
-async function loadAuthenticatedApp() {
-  await loadModels();
+async function loadAuthenticatedApp(startup = null) {
   loadPlanUsage();
-  if (state.appLoaded) return;
+  if (state.appLoaded) {
+    await loadModels();
+    return;
+  }
   state.appLoaded = true;
   connectSidebarActivity();
-  await loadConversations();
 
-  if (state.conversations.length) {
-    // Resume the newest conversation, but do not block startup on it: the
-    // shell renders first, the transcript (newest page only) follows.
-    openConversation(state.conversations[0].id).catch(() => {});
+  // The account status and visibility preferences are local. They give a
+  // returning user a usable default while the full catalog fetches remotely.
+  state.hiddenModels = state.meta.hidden_models || [];
+  if (!state.modelCatalog) {
+    const starterModels = [];
+    if (state.auth.free_mode) starterModels.push(state.meta.default_model);
+    else if (state.auth.authenticated) starterModels.push("auto");
+    state.models = starterModels.filter((model) => !state.hiddenModels.includes(model));
+    applyModelVisibility();
+  }
+  loadModels().catch((error) => toast(error.message, true));
+
+  const request = state.conversationRequest;
+  if (startup) {
+    state.conversations = startup.conversations;
   } else {
-    // First run: show the new-session screen in the current directory. The
-    // conversation itself is created when the first prompt is sent.
+    await loadConversations();
+  }
+  if (request !== state.conversationRequest) return;
+  if (startup?.latest) {
+    showConversation(startup.latest);
+  } else if (state.conversations.length) {
+    // Large transcripts are fetched after the sidebar is ready.
+    if (startup) renderConversationList();
+    openConversation(state.conversations[0].id);
+  } else {
     startNewSession();
   }
 }
 
 async function init() {
-  state.meta = await get("/api/meta");
+  const node = $("startup-data");
+  const startup = JSON.parse(node.textContent);
+  node.remove();
+  const { meta, auth } = startup;
+  state.meta = meta;
+  renderAuth(auth);
   el.toolCount.textContent = `${state.meta.tools.length} tools`;
 
   // The details rail is on by default when there is room for it. Stored
@@ -57,9 +82,8 @@ async function init() {
   checkForUpdate();
   loadRemote().catch(() => {});
   startClock();
-  const auth = await refreshAuth();
   if (auth.authenticated || auth.free_mode || auth.opencode_go || auth.custom_providers) {
-    await loadAuthenticatedApp();
+    await loadAuthenticatedApp(startup);
   } else {
     setBusy(false);
   }

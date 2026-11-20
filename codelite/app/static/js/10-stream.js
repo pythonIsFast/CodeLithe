@@ -23,7 +23,7 @@ function updateSendState() {
   const hasContent = el.prompt.value.trim().length > 0 || state.attachments.length > 0;
   const canSteer = state.busy && state.active?.model === "gpt-6-astra";
   el.send.disabled =
-    (!state.active && !state.draft) || !hasContent || (state.busy && !canSteer);
+    (!state.active && !state.draft?.model) || !hasContent || (state.busy && !canSteer);
 }
 
 async function reconcileRun(conversationId) {

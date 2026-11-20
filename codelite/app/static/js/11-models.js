@@ -10,7 +10,8 @@ function ensureModelOption(model) {
   option.value = model;
   option.textContent = state.models.includes(model)
     ? (state.modelLabels?.[model] || (model === "auto" ? "Auto" : model))
-    : (state.hiddenModels?.includes(model) ? "Hidden model" : "Unavailable model");
+    : (state.hiddenModels?.includes(model) ? "Hidden model"
+      : state.loadingModels ? model.replace(/^(opencode-go\/|custom\/[^/]+\/)/, "") : "Unavailable model");
   // Existing chats can display a hidden or unavailable model as their current value.
   option.hidden = !state.models.includes(model);
   option.disabled = option.hidden;
@@ -103,19 +104,27 @@ function renderFastToggle(requested, model) {
 }
 
 async function loadModels() {
-  const data = await get("/api/models");
-  state.modelCatalog = data.models || [];
-  state.modelLabels = data.labels || {};
-  state.hiddenModels = data.hidden_models || [];
-  state.efforts = data.efforts || ["low", "medium", "high"];
-  state.capabilities = data.capabilities || {};
-  applyModelVisibility();
+  state.loadingModels = true;
+  try {
+    const data = await get("/api/models");
+    state.modelCatalog = data.models || [];
+    state.modelLabels = data.labels || {};
+    state.hiddenModels = data.hidden_models || [];
+    state.efforts = data.efforts || ["low", "medium", "high"];
+    state.capabilities = data.capabilities || {};
+    for (const error of data.errors || []) toast(error, true);
+  } finally {
+    state.loadingModels = false;
+    applyModelVisibility();
+  }
   refreshBehaviourModels();
-  for (const error of data.errors || []) toast(error, true);
+  if (state.settingsTab === "model-picker" && !el.settingsOverlay.hidden) renderModelVisibility();
 }
 
 function applyModelVisibility() {
-  state.models = state.modelCatalog.filter((model) => !state.hiddenModels.includes(model));
+  if (state.modelCatalog) {
+    state.models = state.modelCatalog.filter((model) => !state.hiddenModels.includes(model));
+  }
   const active = state.active;
   const draft = state.draft;
   const preferred = draft?.model || el.modelSelect.value;
@@ -131,4 +140,10 @@ function applyModelVisibility() {
     draft.model = selected;
     draft.effort = el.effortSelect.value;
   }
+  const contextWindow = state.capabilities[active?.model]?.context_window;
+  if (active && !state.busy && Number.isFinite(contextWindow)) {
+    active.context_window = contextWindow;
+    refreshUsageFromConversation();
+  }
+  updateSendState();
 }

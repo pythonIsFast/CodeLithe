@@ -71,6 +71,7 @@ function renderDetails() {
  * is actually sent, matching the reference desktop agent new-session flow.
  */
 function startNewSession(workspace = null) {
+  state.conversationRequest += 1;
   const previousWorkspace = state.active?.workspace || state.draft?.workspace;
   disconnectStream();
   state.active = null;
@@ -99,14 +100,26 @@ function startNewSession(workspace = null) {
   el.titleButton.classList.add("untitled");
   el.composerContext.hidden = false;
   el.emptyState.hidden = false;
-  renderEntries([]);
+  renderEntries([], null, false);
   renderConversationList();
   setBusy(false);
   resetUsage();
   renderDetails();
   updateDraftControls();
   updateSendState();
-  el.prompt.focus();
+  scheduleSessionLayout();
+}
+
+function scheduleSessionLayout() {
+  const request = state.conversationRequest;
+  const focused = document.activeElement;
+  // Let the first layout happen naturally. Reading scrollHeight or
+  // focusing the composer synchronously forces an early WebView layout.
+  requestAnimationFrame(() => {
+    if (request !== state.conversationRequest) return;
+    scrollDown(true);
+    if (document.activeElement === focused) el.prompt.focus();
+  });
 }
 
 /** Mirror the draft's choices into the composer controls and folder chip. */

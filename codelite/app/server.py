@@ -31,6 +31,8 @@ import sys
 import tempfile
 import uuid
 import zipfile
+from functools import lru_cache
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +45,7 @@ from ..config import (
     chat_models,
     context_window_for,
 )
+from ..db.store import Conversation
 from ..importer import import_codex_sessions, preview_codex_sessions
 from ..settings import schema as behaviour_schema
 from ..updater import UpdateError, check_update, install_update
@@ -75,15 +78,8 @@ SSE_HEADERS = {
 }
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
-
-
-def _context_window(runtime: Runtime, model: str) -> int:
-    """Codex's own figure for the model's context window, else the static fallback."""
-    try:
-        live = runtime.session.context_window(model)
-    except Exception:  # noqa: BLE001 - a display figure must not 500 the route
-        live = None
-    return live or context_window_for(model)
+STARTUP_TRANSCRIPT_LIMIT = 60
+STARTUP_TRANSCRIPT_BYTES = 128 * 1024
 
 
 _asset_root_cache: Path | None = None
@@ -229,31 +225,68 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
         return render_template("remote_login.html", error=error)
 
     @app.get("/")
-    def index() -> str:
-        return render_template("index.html")
+    def index():
+        auth = auth_snapshot()
+        conversations = []
+        latest = None
+        if auth["authenticated"] or auth["free_mode"] or auth["opencode_go"] or auth["custom_providers"]:
+            conversations = rt().store.list_conversations()
+            if conversations:
+                candidate = conversation_snapshot(conversations[0], STARTUP_TRANSCRIPT_LIMIT)
+                # A tool can return large outputs. Let the browser load those
+                # pages separately so they cannot delay rendering the shell.
+                if len(json.dumps(candidate, ensure_ascii=False).encode("utf-8")) <= STARTUP_TRANSCRIPT_BYTES:
+                    latest = candidate
+        response = make_response(render_template("index.html", startup={
+            "meta": meta_snapshot(),
+            "auth": auth,
+            "conversations": [conversation.as_dict() for conversation in conversations],
+            "latest": latest,
+        }))
+        response.cache_control.no_store = True
+        return response
+
+    @lru_cache(maxsize=2)
+    def bundled_assets(kind: str) -> tuple[bytes, str]:
+        # Numeric filenames define the order for classic scripts and CSS.
+        # Keep the individual files available for packaging checks and debugging.
+        files = sorted((assets / "static" / kind).glob(f"[0-9][0-9]-*.{kind}"))
+        separator = b"\n;\n" if kind == "js" else b"\n"
+        body = separator.join(file.read_bytes() for file in files)
+        return body, sha256(body).hexdigest()
+
+    @app.get("/static/<any(css,js):kind>/startup")
+    def startup_assets(kind: str):
+        body, etag = bundled_assets(kind)
+        response = Response(body, mimetype="text/css" if kind == "css" else "text/javascript")
+        response.set_etag(etag)
+        response.cache_control.no_cache = True
+        return response.make_conditional(request)
 
     # -- meta ------------------------------------------------------------------
 
+    def meta_snapshot() -> dict[str, Any]:
+        runtime = rt()
+        return {
+            "cwd": str(Path.cwd()),
+            "home": str(Path.home()),
+            "default_model": (
+                POLLINATIONS_MODEL
+                if runtime.config.use_pollinations_free
+                else runtime.config.agent_model
+            ),
+            "judge_model": runtime.config.judge_model,
+            "hidden_models": runtime.store.get_state("hidden_picker_models") or [],
+            "default_mode": runtime.config.default_permission_mode.value,
+            "modes": [
+                {"value": mode.value, "label": mode.label} for mode in Mode
+            ],
+            "tools": registry.names(),
+        }
+
     @app.get("/api/meta")
     def meta():
-        runtime = rt()
-        return jsonify(
-            {
-                "cwd": str(Path.cwd()),
-                "home": str(Path.home()),
-                "default_model": (
-                    POLLINATIONS_MODEL
-                    if runtime.config.use_pollinations_free
-                    else runtime.config.agent_model
-                ),
-                "judge_model": runtime.config.judge_model,
-                "default_mode": runtime.config.default_permission_mode.value,
-                "modes": [
-                    {"value": mode.value, "label": mode.label} for mode in Mode
-                ],
-                "tools": registry.names(),
-            }
-        )
+        return jsonify(meta_snapshot())
 
     def picker_catalog() -> dict[str, Any]:
         runtime = rt()
@@ -292,6 +325,10 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
         capabilities.update({model: session.model_capabilities(model) for model in custom_models})
         errors.extend(custom_errors)
 
+        runtime.model_context_windows = {
+            model: context_window for model, capability in capabilities.items()
+            if (context_window := capability.get("context_window"))
+        }
         return {
             "models": list(dict.fromkeys(slugs)),
             "labels": labels,
@@ -403,15 +440,18 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
 
     # -- ChatGPT account ------------------------------------------------------
 
-    @app.get("/api/auth")
-    def auth_status():
+    def auth_snapshot() -> dict[str, Any]:
         status = login_manager().status()
         status["free_mode"] = rt().config.use_pollinations_free
         go_status = rt().session.opencode_go.status()
         status["opencode_go"] = go_status["api_key_configured"]
         status["opencode_go_usage"] = go_status["usage_key_configured"]
         status["custom_providers"] = rt().session.custom_providers.configured()
-        return jsonify(status)
+        return status
+
+    @app.get("/api/auth")
+    def auth_status():
+        return jsonify(auth_snapshot())
 
     @app.post("/api/auth/login")
     def start_auth_login():
@@ -509,34 +549,32 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
             return jsonify({"error": str(error)}), 400
         return jsonify(conversation.as_dict()), 201
 
+    def conversation_snapshot(
+        conversation: Conversation, limit: int | None = None, before: int | None = None,
+    ) -> dict[str, Any]:
+        runtime = rt()
+        entries = runtime.store.load_entries(conversation.id, limit=limit, before_id=before)
+        oldest = min((entry["id"] for entry in entries), default=None)
+        return {
+            **conversation.as_dict(),
+            "entries": entries,
+            "has_more": limit is not None and runtime.store.has_items_before(conversation.id, oldest),
+            "context_window": runtime.model_context_windows.get(conversation.model)
+            or context_window_for(conversation.model),
+            "busy": runtime.is_busy(conversation),
+            "pending_permissions": runtime.pending_permissions(conversation),
+        }
+
     @app.get("/api/conversations/<conversation_id>")
     def get_conversation(conversation_id: str):
         conversation, error = _conversation_or_404(conversation_id)
         if error:
             return error
-        runtime = rt()
         # Optional pagination: without params the whole transcript is
-        # returned (reconcile paths rely on that); the UI opens a chat with
-        # only the newest page and prepends older ones while scrolling.
-        limit = request.args.get("limit", type=int)
-        before = request.args.get("before", type=int)
-        entries = runtime.store.load_entries(conversation_id, limit=limit, before_id=before)
-        oldest = min((entry["id"] for entry in entries), default=None)
-        has_more = limit is not None and runtime.store.has_items_before(
-            conversation_id, oldest
-        )
-        return jsonify(
-            {
-                **conversation.as_dict(),
-                # Entries rather than bare payloads: the UI needs each item's
-                # timestamp and token count for the per-message footer.
-                "entries": entries,
-                "has_more": has_more,
-                "context_window": _context_window(runtime, conversation.model),
-                "busy": runtime.is_busy(conversation),
-                "pending_permissions": runtime.pending_permissions(conversation),
-            }
-        )
+        # returned (reconcile paths rely on that).
+        return jsonify(conversation_snapshot(
+            conversation, request.args.get("limit", type=int), request.args.get("before", type=int),
+        ))
 
     @app.get("/api/conversations/<conversation_id>/entries")
     def get_conversation_entries(conversation_id: str):

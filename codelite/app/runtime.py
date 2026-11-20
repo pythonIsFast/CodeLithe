@@ -95,6 +95,9 @@ class Runtime:
         self.session = Session(
             ProviderConfig(auth_file_path=self.config.data_dir / "auth.json")
         )
+        # Only the model picker populates these display figures. Fetching a chat
+        # transcript must never wait for the provider's model catalog.
+        self.model_context_windows: dict[str, int] = {}
         self._conversations: dict[str, ConversationRuntime] = {}
         self._sidebar_activity: dict[str, SidebarActivity] = {}
         self._activity_subscribers: list[queue.Queue] = []

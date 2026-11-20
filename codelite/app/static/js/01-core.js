@@ -155,6 +155,8 @@ const el = {
 const state = {
   meta: null,
   models: [],
+  loadingModels: false,
+  conversationRequest: 0,
   efforts: [],
   capabilities: {},
   behaviour: null,

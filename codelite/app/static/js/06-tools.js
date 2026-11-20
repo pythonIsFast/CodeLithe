@@ -521,7 +521,7 @@ function renderEntryInto(sink, entry) {
   }
 }
 
-function renderEntries(entries, hasMore = null) {
+function renderEntries(entries, hasMore = null, scroll = true) {
   el.messages.replaceChildren();
   entryRows = new Map();
   entryTodos = null;
@@ -538,7 +538,7 @@ function renderEntries(entries, hasMore = null) {
 
   el.messages.appendChild(el.emptyState);
   el.emptyState.hidden = entries.length > 0;
-  scrollDown(true);
+  if (scroll) scrollDown(true);
 }
 
 /**
