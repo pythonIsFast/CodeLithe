@@ -38,6 +38,7 @@ from ..db.store import Conversation, Store
 from ..permission.manager import PermissionManager
 from ..permission.modes import Mode
 from ..provider.config import ProviderConfig
+from ..provider.opencode_go import GO_REASONING_EFFORTS, is_go_model
 from ..provider.pollinations import POLLINATIONS_MODEL
 from ..provider.session import Session
 from ..questions import QuestionManager
@@ -130,6 +131,9 @@ class Runtime:
 
     # -- conversations -------------------------------------------------------
 
+    def normalize_model_effort(self, model: str, effort: Any) -> str:
+        return normalize_effort(effort, GO_REASONING_EFFORTS if is_go_model(model) else None)
+
     def create_conversation(
         self,
         workspace: str | None = None,
@@ -142,13 +146,15 @@ class Runtime:
         resolved_workspace = Path(workspace).expanduser().resolve() if workspace else Path.cwd()
         if not resolved_workspace.is_dir():
             raise ValueError(f"{resolved_workspace} is not a directory.")
+        chosen_model = model or (
+            POLLINATIONS_MODEL if self.config.use_pollinations_free else self.config.agent_model
+        )
         return self.store.create_conversation(
             workspace=str(resolved_workspace),
-            model=model or (
-                POLLINATIONS_MODEL if self.config.use_pollinations_free else self.config.agent_model
-            ),
+            model=chosen_model,
             permission_mode=(mode or self.config.default_permission_mode).value,
-            reasoning_effort=normalize_effort(
+            reasoning_effort=self.normalize_model_effort(
+                chosen_model,
                 reasoning_effort
                 if reasoning_effort is not None
                 else self.config.default_reasoning_effort

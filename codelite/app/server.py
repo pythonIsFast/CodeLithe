@@ -42,7 +42,6 @@ from ..config import (
     AppConfig,
     chat_models,
     context_window_for,
-    normalize_effort,
 )
 from ..importer import import_codex_sessions, preview_codex_sessions
 from ..settings import schema as behaviour_schema
@@ -602,7 +601,9 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
             key: str(body[key]) for key in ("title", "model") if body.get(key) is not None
         }
         if "reasoning_effort" in body:
-            fields["reasoning_effort"] = normalize_effort(body.get("reasoning_effort"))
+            fields["reasoning_effort"] = runtime.normalize_model_effort(
+                fields.get("model", conversation.model), body.get("reasoning_effort"),
+            )
             if conversation.model == "gpt-6-astra" and runtime.is_busy(conversation):
                 runtime.update_run_reasoning(conversation, fields["reasoning_effort"])
         # Mutually exclusive -- a request sets at most one; whichever one it

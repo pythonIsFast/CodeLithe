@@ -642,7 +642,9 @@ class AgentRunner:
         try:
             allowed = self._session.model_capabilities(self._run_model).get("efforts")
         except Exception:  # noqa: BLE001 - a catalog hiccup must not fail a run
-            return effort
+            return "" if is_go_model(self._run_model) else effort
+        if is_go_model(self._run_model):
+            return normalize_effort(effort, allowed) if allowed else ""
         if not allowed:
             allowed = ASTRA_REASONING_EFFORTS if self._run_model == "gpt-6-astra" else ()
         if not allowed:

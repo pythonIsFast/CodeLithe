@@ -121,6 +121,48 @@ class OpenCodeGoTests(unittest.TestCase):
             self.session.send_responses({"model": "gpt-6-astra"})
             codex.assert_called_once()
 
+    def test_reasoning_choices_are_advertised_saved_and_sent(self):
+        self.go.save({"api_key": "inference-test-key"})
+        catalog = {"data": [
+            {"id": "graded", "capabilities": {"reasoning": {
+                "supported": True, "effort": ["none", "minimal", "high", "default"],
+            }}},
+            {"id": "binary", "capabilities": {"reasoning": {"supported": True, "toggle": True}}},
+            {"id": "automatic", "capabilities": {"reasoning": {"supported": True}}},
+        ]}
+        with (
+            patch.object(self.go, "_json", return_value=catalog),
+            patch.object(self.session, "list_models", return_value=[]),
+        ):
+            choices = self.client.get("/api/models").json["capabilities"]
+            self.assertEqual(choices["opencode-go/graded"]["efforts"], ["none", "minimal", "high"])
+            self.assertEqual(choices["opencode-go/binary"]["efforts"], ["none", "high"])
+            self.assertTrue(choices["opencode-go/binary"]["reasoning_toggle_only"])
+            self.assertEqual(choices["opencode-go/automatic"]["efforts"], [])
+
+        conversation = self.client.post("/api/conversations", json={
+            "model": "opencode-go/graded", "reasoning_effort": "minimal",
+        }).json
+        self.assertEqual(conversation["reasoning_effort"], "minimal")
+        updated = self.client.patch(f"/api/conversations/{conversation['id']}", json={
+            "reasoning_effort": "none",
+        }).json
+        self.assertEqual(updated["reasoning_effort"], "none")
+
+        for model, effort, expected in (
+            ("graded", "minimal", {"effort": "minimal"}),
+            ("binary", "high", {"effort": "high"}),
+            ("binary", "none", {"effort": "none"}),
+            ("automatic", "high", None),
+            ("graded", "medium", None),
+        ):
+            with self.subTest(model=model, effort=effort):
+                with patch.object(self.go, "_request", return_value=BytesIO(b"{}")) as request:
+                    self.session.send_responses({
+                        "model": f"opencode-go/{model}", "reasoning": {"effort": effort},
+                    })
+                self.assertEqual(json.loads(request.call_args.args[2]).get("reasoning"), expected)
+
     def test_settings_template_includes_go_onboarding(self):
         page = self.client.get("/")
         self.assertEqual(page.status_code, 200)

@@ -30,6 +30,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 BASE_URL = "https://opencode.ai"
 RESPONSES_PATH = "/inference/go/openai/v1/responses"
 MODEL_PREFIX = "opencode-go/"
+GO_REASONING_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra")
 
 
 def is_go_model(model: Any) -> bool:
@@ -164,6 +165,37 @@ class OpenCodeGo:
             raise RuntimeError("OpenCode Go returned no usage windows for this key.")
         return windows
 
+    def reasoning_capabilities(self, model: str) -> dict[str, Any]:
+        info = self.models().get(model, {})
+        capabilities = info.get("capabilities")
+        reasoning = capabilities.get("reasoning") if isinstance(capabilities, dict) else None
+        if not isinstance(reasoning, dict) or reasoning.get("supported") is not True:
+            return {"efforts": [], "default_effort": "", "reasoning_toggle_only": False}
+
+        declared = reasoning.get("effort")
+        efforts = []
+        if isinstance(declared, list):
+            efforts = list(dict.fromkeys(value for value in declared if value in GO_REASONING_EFFORTS))
+        toggle = reasoning.get("toggle") is True
+        toggle_only = toggle and not any(effort != "none" for effort in efforts)
+        if toggle:
+            if "none" not in efforts:
+                efforts.insert(0, "none")
+            if toggle_only:
+                # The Responses bridge uses none for off and a non-none effort
+                # to enable thinking on models with a binary control.
+                efforts.append("high")
+        default = reasoning.get("default")
+        default_effort = ""
+        if isinstance(default, dict) and default.get("type") == "effort":
+            if default.get("value") in efforts:
+                default_effort = default["value"]
+        return {
+            "efforts": efforts,
+            "default_effort": default_effort,
+            "reasoning_toggle_only": toggle_only,
+        }
+
     def send(self, body: dict[str, Any], *, stream: bool, session_id: str):
         key = self._keys().get("api_key")
         if not key:
@@ -174,9 +206,16 @@ class OpenCodeGo:
             "store": False,
             "stream": stream,
         }
-        # These options and history items belong to the Codex transport.
-        for field in ("service_tier", "reasoning"):
-            request.pop(field, None)
+        request.pop("service_tier", None)
+        reasoning = request.pop("reasoning", None)
+        effort = reasoning.get("effort") if isinstance(reasoning, dict) else None
+        if effort in GO_REASONING_EFFORTS:
+            try:
+                allowed = self.reasoning_capabilities(body["model"])["efforts"]
+            except (OSError, ValueError, RuntimeError):
+                allowed = []
+            if effort in allowed:
+                request["reasoning"] = {"effort": effort}
         if isinstance(request.get("input"), list):
             request["input"] = [
                 {k: v for k, v in item.items() if k not in ("id", "namespace")}

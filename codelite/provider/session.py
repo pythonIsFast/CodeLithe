@@ -91,7 +91,11 @@ class Session:
         Empty lists when the catalog is unreachable, so a caller falls back
         rather than offering a level the model would reject.
         """
-        if is_go_model(model) or is_custom_model(model) or self.use_pollinations_free:
+        if is_custom_model(model):
+            return {"efforts": [], "default_effort": "", "fast": False, "flex": False}
+        if is_go_model(model):
+            return {**self.opencode_go.reasoning_capabilities(model), "fast": False, "flex": False}
+        if self.use_pollinations_free:
             return {"efforts": [], "default_effort": "", "fast": False, "flex": False}
         info = self._transport.resolve_model_info(model)
         if info is None:

@@ -44,12 +44,11 @@ function syncModeChip() {
  * follows the model. Auto has no single answer, so it gets the full set.
  */
 function effortsFor(model) {
-  if (model?.startsWith("opencode-go/")) return [];
   if (model && model !== "auto") {
     const capability = state.capabilities[model];
     if (capability && Array.isArray(capability.efforts)) return capability.efforts;
   }
-  if (model?.startsWith("custom/")) return [];
+  if (model?.startsWith("opencode-go/") || model?.startsWith("custom/")) return [];
   return state.efforts;
 }
 
@@ -74,12 +73,14 @@ function fillEffortSelect(select, selected = "", model = "") {
   // row; the dialog keeps the explicit "Effort:" prefix because it has no
   // neighbouring model picker to give it context.
   const compact = select.id === "effort-select";
+  const toggleOnly = state.capabilities[model]?.reasoning_toggle_only;
   for (const value of ["", ...efforts]) {
     const option = document.createElement("option");
     option.value = value;
-    option.textContent = compact
-      ? (value ? value.charAt(0).toUpperCase() + value.slice(1) : "Auto")
-      : (value ? `Effort: ${value}` : "Effort: auto");
+    let label = value ? value.charAt(0).toUpperCase() + value.slice(1) : "Auto";
+    if (value === "none") label = "Thinking off";
+    if (toggleOnly && value === "high") label = "Thinking on";
+    option.textContent = compact ? label : `Effort: ${label}`;
     select.appendChild(option);
   }
   select.value = efforts.includes(selected) ? selected : "";
