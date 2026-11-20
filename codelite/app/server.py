@@ -282,7 +282,7 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
         try:
             for model, info in session.opencode_go.models().items():
                 slugs.append(model)
-                labels[model] = f"{info.get('name') or model.split('/', 1)[1]} · OpenCode Go"
+                labels[model] = info.get("name") or model.split("/", 1)[1]
                 capabilities[model] = session.model_capabilities(model)
         except (OSError, ValueError, RuntimeError) as error:
             errors.append(str(error))

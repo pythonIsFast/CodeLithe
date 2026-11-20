@@ -65,7 +65,7 @@ class OpenCodeGoTests(unittest.TestCase):
             self.client.put("/api/settings/model-picker", json={"hidden_models": ["gpt-5.6-luna"]})
             schema = self.client.get("/api/settings/behaviour").json["schema"]
             self.assertEqual(schema["models"], ["gpt-6-astra", go_model])
-            self.assertEqual(schema["model_labels"][go_model], "Kimi K3 · OpenCode Go")
+            self.assertEqual(schema["model_labels"][go_model], "Kimi K3")
             values = {"agent_model": go_model, "auto_models": [go_model]}
             result = self.client.put("/api/settings/behaviour", json={"values": values}).json["values"]
             self.assertEqual(result["agent_model"], go_model)
