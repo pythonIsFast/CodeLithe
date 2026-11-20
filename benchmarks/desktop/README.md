@@ -36,7 +36,7 @@ Raw measurements are available for [ChatGPT](results/chatgpt-26.1111.21308.json)
 | Disk write, observed lower bound | 163,840 B | 22,511,616 B |
 | Fixture tests | Passed | Passed |
 
-Both apps ran the same coding task against a live provider. ChatGPT used manual terminal markers, and its model and reasoning effort were unrecorded. CodeLithe used automatic task boundaries and sent every model request with GPT-6.2 Sol on Medium. See the [CodeLithe coding run](results/codelithe-ea8c53c-gpt-6.2-sol-medium.json) for the raw measurements.
+Both apps ran the same coding task with GPT-6.2 Sol against a live provider. ChatGPT used manual terminal markers, and its reasoning effort was unrecorded. CodeLithe used automatic task boundaries and sent every model request with Medium reasoning effort. See the [CodeLithe coding run](results/codelithe-ea8c53c-gpt-6.2-sol-medium.json) for the raw measurements.
 
 ## Prerequisites
 

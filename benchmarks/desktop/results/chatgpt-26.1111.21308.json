@@ -2,7 +2,7 @@
   {
     "app": "chatgpt",
     "version": "26.1111.21308",
-    "model": null,
+    "model": "gpt-6.2-sol",
     "effort": null,
     "warmup": false,
     "idle_target_seconds": 60,
