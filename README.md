@@ -1,381 +1,160 @@
 <p align="center">
-  <img src="assets/icon.png" width="96" alt="CodeLithe logo" />
+  <img src="assets/icon.png" width="96" alt="CodeLithe logo">
 </p>
 
 <h1 align="center">CodeLithe</h1>
 
 <p align="center">
-  <strong>A fast, lightweight coding agent for your local projects.</strong><br />
-  Sign in with ChatGPT. Work in a native desktop window. Keep control of every risky action.
+  <strong>A lightweight desktop coding agent for your local projects.</strong><br>
+  Open a folder, describe a change, and follow the agent as it reads, edits, and tests your code.
 </p>
 
 <p align="center">
-  <a href="https://github.com/pythonIsFast/CodeLithe/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-e17755.svg?style=flat-square" alt="Apache 2.0 license" /></a>
-  <img src="https://img.shields.io/badge/runtime-Python-3776ab.svg?style=flat-square" alt="Python runtime" />
-  <img src="https://img.shields.io/badge/UI-native%20webview-2f855a.svg?style=flat-square" alt="Native webview UI" />
-  <img src="https://img.shields.io/badge/dependencies-small%20by%20design-805ad5.svg?style=flat-square" alt="Small dependency footprint" />
+  <a href="https://github.com/pythonIsFast/CodeLithe/actions/workflows/release.yml"><img src="https://github.com/pythonIsFast/CodeLithe/actions/workflows/release.yml/badge.svg" alt="Build status"></a>
+  <a href="https://github.com/pythonIsFast/CodeLithe/releases/latest"><img src="https://img.shields.io/github/v/release/pythonIsFast/CodeLithe" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-2fa88f" alt="Apache 2.0 license"></a>
 </p>
 
 <p align="center">
-  <a href="#download">Download</a> · <a href="#get-started">Get started</a> · <a href="#what-it-can-do">Features</a> · <a href="#safety-you-control">Safety</a> · <a href="#extend-a-project">Extensions</a> · <a href="#architecture">Architecture</a> · <a href="benchmarks/desktop/">Benchmark</a>
+  <a href="https://github.com/pythonIsFast/CodeLithe/releases/latest"><strong>Download</strong></a> ·
+  <a href="#benchmark">Benchmark</a> ·
+  <a href="#get-started">Get started</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#development">Development</a>
 </p>
 
----
+CodeLithe runs the agent and its tools on your machine. It opens in the system's native webview and stores conversations in local SQLite. Sign in with ChatGPT without creating an OpenAI API key. Model requests send the relevant prompts and project context to your chosen provider.
 
-> [!IMPORTANT]
-> CodeLithe uses your existing **ChatGPT sign-in**, not an API key or API credits. It keeps its own OAuth session and never reads or overwrites Codex CLI authentication.
+## Benchmark
 
-## Why CodeLithe?
+CodeLithe and ChatGPT Desktop in local Codex mode were measured on the same Zorin OS 18.1 machine. Lower time and resource use are better.
 
-Most coding agents are either heavy desktop applications or thin terminal wrappers. CodeLithe aims for a different balance: a capable local agent with a compact Python runtime, no Electron bundle, and an interface that stays out of the way.
+![Comparison of startup time, idle RAM and idle CPU. CodeLithe used 243 MiB of idle RAM and 0.62% of a logical core versus 916 MiB and 9.59% for ChatGPT Desktop. Startup readiness was marked differently.](benchmarks/desktop/results/desktop-comparison.png)
 
-| | CodeLithe |
-|---|---|
-| **Desktop app** | Native OS webview via pywebview — no bundled Chromium |
-| **Account** | Sign in with ChatGPT; tokens are stored separately in CodeLithe's data directory |
-| **Agent loop** | Streaming model → tool → result → model workflow with automatic context compaction |
-| **Safety** | Per-action approvals, scoped session grants, and an optional command judge |
-| **Project context** | Instructions, memory, skills, MCP, and LSP — all lazy and bounded |
-| **Footprint** | Vanilla HTML/CSS/JS, Flask, pywebview, and a deliberately small dependency set |
+| Measurement | ChatGPT Desktop | CodeLithe |
+| --- | ---: | ---: |
+| Startup, median | 9.84 s | 1.20 s |
+| Idle RAM, median PSS | 916.0 MiB | 243.0 MiB |
+| Idle CPU, share of one logical core | 9.59% | 0.62% |
+| Coding RAM, median PSS | 1,036.7 MiB | 217.4 MiB |
+| Total CPU time during coding | 9.50 s | 7.25 s |
+| Coding task completion | 29.65 s | 40.64 s |
+| Coding fixture tests | Passed | Passed |
 
-## Download
+<details>
+<summary><strong>See the coding comparison chart</strong></summary>
 
-Every [release](https://github.com/pythonIsFast/CodeLithe/releases/latest) ships four ready-to-run builds, all built from the same source in CI:
+![For one active coding chat, CodeLithe used less RAM and CPU time, and ChatGPT Desktop completed the task sooner in the recorded runs.](benchmarks/desktop/results/coding-comparison.png)
 
-| Platform | File | Notes |
-|---|---|---|
-| Windows | `CodeLite-<version>-windows-setup.exe` | Installer, no admin rights needed |
-| Windows | `CodeLite-<version>-windows-portable.exe` | Single file, nothing to install |
-| Debian / Ubuntu | `code-lite_<version>_all.deb` | `sudo apt install ./code-lite_<version>_all.deb` |
-| Linux | `code-lite-<version>.pyz` | Single file, run with `python3 code-lite-<version>.pyz` |
+</details>
 
-Existing installations can upgrade in place. Installer filenames and the
-`code-lite` launcher keep their existing names for compatibility.
+ChatGPT used manual timing markers. CodeLithe used automatic markers and a scripted provider for startup and idle. Both coding runs used live providers. CodeLithe used **GPT‑6.2 Sol on Medium**, and the ChatGPT model and effort were unrecorded. These are measurements from one machine and one coding run per app.
 
-The Linux builds use your system's own Python and WebKitGTK rather than bundling a browser, which is what keeps them a few megabytes instead of a few hundred. If the window doesn't open on a fresh install:
-
-```bash
-sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1
-```
-
-Windows builds are not code-signed, so SmartScreen may warn on first run; verify the download against the release's `SHA256SUMS.txt` if that matters to you.
-
-Prefer to run from source, or want to change the code? Keep reading.
+[Full results, raw data, and reproduction steps](benchmarks/desktop/README.md)
 
 ## Get started
 
-### 1. Install
+### 1. Download and open CodeLithe
 
-```bash
+Get the file for your system from the [latest release](https://github.com/pythonIsFast/CodeLithe/releases/latest).
+
+| System | Download | How to run |
+| --- | --- | --- |
+| Windows x64 | `CodeLite-<version>-windows-setup.exe` | Run the per-user installer, then open CodeLithe from Start. |
+| Windows x64, portable | `CodeLite-<version>-windows-portable.exe` | Open the downloaded executable. |
+| Debian or Ubuntu | `code-lite_<version>_all.deb` | Run `sudo apt install ./code-lite_<version>_all.deb`, then open CodeLithe from the app menu. |
+| Linux, zipapp | `code-lite-<version>.pyz` | Run `python3 code-lite-<version>.pyz` with Python and WebKitGTK installed. |
+
+Replace `<version>` with the version in the downloaded filename. The files and Linux launcher keep their legacy names for in-place upgrades. Releases include `SHA256SUMS.txt` for verification.
+
+### 2. Start a session
+
+1. Select **Sign in with ChatGPT** and complete the sign-in in your browser.
+2. Choose **New session** and select a project folder.
+3. Start with a verifiable task such as “Find the failing tests, fix the smallest relevant issue, and run those tests again.”
+
+New sessions default to **Ask**. You can inspect proposed edits and commands before approving them.
+
+### Run from source
+
+<details>
+<summary><strong>Linux and Windows setup</strong></summary>
+
+```sh
 git clone https://github.com/pythonIsFast/CodeLithe.git
 cd CodeLithe
-pip install -r requirements.txt
 ```
 
-### 2. Run
+On Debian or Ubuntu, install the system webview and create a virtual environment that can use PyGObject.
 
-```bash
-python3 run.py
+```sh
+sudo apt install python3-venv python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1
+python3 -m venv --system-site-packages .venv
+. .venv/bin/activate
+python -m pip install -r requirements.txt
+python run.py
 ```
 
-On first launch, select **Sign in with ChatGPT**. The browser completes OAuth and CodeLithe stores its own session at `~/.local/share/codelite/auth.json` by default.
+On Windows, install Python and the WebView2 Runtime, then run these commands in PowerShell.
 
-<details>
-<summary><strong>Useful launch modes</strong></summary>
-
-```bash
-# Start with automatic file writes, but still ask for shell commands.
-python3 run.py --mode permit_writes
-
-# Select a model explicitly.
-python3 run.py --model gpt-5.6-sol
-
-# Serve the app without opening a native window.
-python3 run.py --headless
-
-# Open the app, capture the window as a PNG, then quit.
-python3 run.py --screenshot ui.png
-
-# Same, but give the interface a little longer to settle first.
-python3 run.py --screenshot ui.png --screenshot-delay 4
-
-# Run only the small OpenAI-compatible local provider.
-python3 -m codelite.provider
-```
-
-`--screenshot` is a quick way to see what the interface actually renders
-without leaving a window open: it starts CodeLithe normally, waits until the
-front end reports that startup finished (plus the optional delay), writes a
-PNG of the web content, and closes the app again. Without a path it saves to
-`screenshot.png` in the current directory; passing a directory saves
-`screenshot.png` inside it. It needs the native window, so it cannot be
-combined with `--headless`, and like the hidden browser's screenshot action it
-is Linux/WebKitGTK-only for now.
-
-</details>
-
-## What it can do
-
-### Build, inspect, and change projects
-
-| Capability | What the agent can do |
-|---|---|
-| **Files & search** | Read, write, precisely edit, list, grep, and glob files inside the workspace |
-| **Terminal** | Run commands with the working directory carried across calls |
-| **Code intelligence** | Ask installed language servers for diagnostics, definitions, references, and symbols |
-| **Planning** | Keep a visible step-by-step task list for longer work |
-| **Clarification** | Pause to ask you a focused question with choices or a typed answer |
-
-### Use the web and work with media
-
-| Capability | How it stays practical |
-|---|---|
-| **Web search & fetch** | Searches public pages and converts HTML, text, or JSON into bounded readable output |
-| **Hidden browser** | Drives a hidden system-webview window for pages `web_fetch` can't read because they need JavaScript to render -- navigate, a compact element snapshot with stable refs, click, fill, run JS, screenshot |
-| **Generate images** | Creates an image through the signed-in ChatGPT account and saves it in the workspace |
-| **See images** | Supplies the actual pixels of a workspace image to the model for the next turn |
-| **Showcase files** | Renders workspace images, video, audio, and files directly in the chat |
-
-### The hidden browser
-
-`web_search`/`web_fetch` stay the default for reading the web -- they need no
-window and are cheap. The `browser` tool exists for the pages those cannot
-read at all: ones that render their content with JavaScript. It reuses the
-same system webview `codelite.app.window` already opens for the UI, in a
-second, invisible window -- no Chromium, no Playwright, no separate browser
-engine.
-
-That window runs in its own child process, not a second window inside the
-app's own: pywebview blocks its owning thread for as long as its event loop
-runs, and a page that hangs or crashes the renderer must not be able to take
-the whole app down with it. Reading (`navigate`, `snapshot`, `screenshot`)
-needs no confirmation, the same as `web_fetch`; anything that acts on the page
-(`click`, `fill`, `evaluate`) goes through the same permission gate as a file
-write, because it can submit a form or follow a link into a purchase flow
-exactly as a write changes state on disk.
-
-One thing this does not paper over: screenshots are WebKitGTK-specific today
-(Linux only) because pywebview itself exposes no screenshot call -- extending
-that to WebView2 on Windows is unimplemented, not merely untested. A
-packaged/frozen build has no separate system Python to run the hidden-window
-child process with, but it doesn't need one either: it re-execs its own
-binary with a hidden `--browser-host` flag instead of spawning a Python
-interpreter.
-
-### Remote Control
-
-From **Settings → Remote Control**, CodeLithe can expose its existing web UI
-through a password-protected Cloudflare Quick Tunnel. The agent, filesystem,
-tools, and permission checks keep running on the local computer; another device
-only receives the UI. CodeLithe generates a new high-entropy password for every
-tunnel and invalidates all remote sessions when the tunnel stops.
-
-Remote Control is optional on Windows and Linux. It does not increase the normal
-installation size: `cloudflared` is downloaded only after pressing **Download
-cloudflared**, verified against the SHA-256 digest published with Cloudflare's
-latest release, and stored under CodeLithe's data directory. Anyone with the URL
-and password has the same control as the local UI, including answering permission
-prompts, so share them only with a trusted device.
-
-### Let Auto choose the right model
-
-Choose **Auto** in the model picker and CodeLithe uses a lightweight routing step before every turn. Routine work stays economical; larger refactors, debugging, and higher-risk changes can receive a more capable model. The selected model (Luna, Terra, or Sol) and reason remain visible in chat, and routing falls back to the balanced option instead of defaulting to the most expensive model.
-
-### Reasoning effort and Fast
-
-Each conversation chooses how hard the model thinks. The levels come from
-Codex's own catalog and differ per model — GPT-5.6-Sol and Terra reach `ultra`,
-Luna stops at `max`, GPT-5.5 at `xhigh` — so the picker follows the model you
-selected. Leaving it on **auto** sends no level at all and lets the model's own
-default apply, which is not one value either: Sol defaults to `low` while Terra
-and Luna default to `medium`.
-
-**Fast** asks for the priority service tier, which Codex describes as "1.5x
-speed, increased usage" and offers on every model except `gpt-5.4-mini` — the
-button hides itself for that one. It is sent as `service_tier: "priority"`,
-the tier id from the catalog, and only for a model that advertises the tier:
-the backend accepts the value for any model, so a pointless request would not
-be refused.
-
-There is deliberately no "Fast was applied" indicator. Every response reports
-`service_tier: "default"`, including responses to requests that did not ask
-for a tier and requests sent to a model with no fast tier at all, so the field
-carries no information about what was actually served. An indicator built on
-it would have reported a working Fast mode as denied.
-
-## Safety you control
-
-Reads are always safe. File changes and terminal commands follow the permission mode of the current conversation.
-
-| Mode | File changes | Shell commands |
-|---|---|---|
-| `ask` | Ask every time | Ask every time |
-| `permit_writes` | Allow | Ask every time |
-| `auto` | Allow | A separate safety check reviews each command, then escalates if needed |
-| `bypass` | Allow | Allow |
-
-When CodeLithe asks, you can approve once, approve a narrow scope for this chat, or deny with feedback. Write approvals include the actual unified diff. Shell grants are restricted to the exact normalized command and working directory; write grants are restricted to the displayed directory.
-
-> [!TIP]
-> `auto` does not silently ignore a blocked command. It shows why the safety check rejected it and lets you make the final decision.
-
-### Which mode should you use?
-
-**`auto` is the recommended default.** A second model reviews every command
-against the task you actually asked for, so a command that looks harmless on
-its own but has nothing to do with the job still gets caught. In practice this
-handles the cases that matter — accidental deletions, a stray `rm` with the
-wrong path, a command aimed outside the project — without a prompt for every
-`ls`.
-
-Choose **`ask`** if you would rather decide yourself. Every command waits for
-you, which is slower but leaves no judgement to a model. It is the right mode
-for an unfamiliar repository, for anything with credentials nearby, or simply
-if you prefer to see each step.
-
-Be aware of what the review is and is not. It is a model reading a command,
-which makes it a strong filter but a filter, not a boundary: a sufficiently
-indirect command can get past it, and there is no operating-system sandbox
-underneath. CodeLithe does not currently confine commands with Landlock,
-seccomp, or a container — an approved command runs with your full user rights.
-If that matters for your work, `ask` is the mode that gives you a hard gate,
-and `bypass` means exactly what its name says.
-
-## Project intelligence, without the bloat
-
-CodeLithe loads useful project context only when it is needed and keeps every injected source bounded.
-
-| Source | Location | Behaviour |
-|---|---|---|
-| **Global memory** | CodeLithe data directory: `memory.md` | Personal preferences that apply to every project |
-| **Project memory** | `.codelite/memory.md` | Commands, conventions, and architecture shared by the workspace |
-| **Repository instructions** | `AGENTS.md`, `CLAUDE.md` | Collected before a run; nested applicable instructions are included |
-| **Skills** | `.codelite/skills/` | Only summaries enter the prompt; full guidance loads on demand |
-| **MCP** | `.codelite/mcp.json` | Stdio servers start only when their tools are used |
-| **LSP** | `.codelite/lsp.json` | Language servers start on their first code-intelligence request |
-
-The settings panel separates account, global memory, project configuration, and import. Global memory works even before a project chat exists.
-
-## Bring your Codex history along
-
-**Settings → Import** reads every session the official Codex CLI recorded under
-`~/.codex` and turns each one into a conversation here, keeping its original
-date, workspace, and token counts. Each import records which session it came
-from, so running it again picks up only what is new.
-
-Imported chats are history rather than resumable state, and the reason is worth
-stating: Codex's tool calls name Codex's own tools, and its reasoning items are
-encrypted against the response chain they came from. Sending either back would
-be an invalid request, not a cosmetic mismatch. So tool calls arrive as readable
-text and the encrypted reasoning is left out. Nothing that was said is lost.
-
-## Extend a project
-
-### Local tools and hooks
-
-Drop project-specific Python extensions into `.codelite/tools/*.py` or `.codelite/plugins/*.py`. Discovery reads only literal metadata; the module itself is imported only when the tool or hook is actually used, through the normal command-permission policy.
-
-```python
-TOOL = {
-    "name": "hello",
-    "description": "Return a project-specific greeting.",
-    "parameters": {
-        "type": "object",
-        "properties": {"name": {"type": "string"}},
-        "required": ["name"],
-        "additionalProperties": False,
-    },
-}
-
-def run(arguments, context):
-    return f"Hello {arguments['name']}"
-```
-
-Plugins can expose `before_tool` and `after_tool` hooks. They may replace arguments or output, but cannot replace a built-in tool name. Extensions are capped at 32 files per project.
-
-### MCP and custom LSP servers
-
-<details>
-<summary><strong>Example MCP configuration</strong></summary>
-
-```json
-{
-  "mcpServers": {
-    "example": {"command": "example-mcp-server", "args": ["--stdio"]}
-  }
-}
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe run.py
 ```
 
 </details>
 
-<details>
-<summary><strong>Example LSP configuration</strong></summary>
+## Features
 
-```json
-{
-  "servers": {
-    "custom-python": {
-      "command": ".venv/bin/pyright-langserver",
-      "args": ["--stdio"],
-      "extensions": [".py"],
-      "languageId": "python"
-    }
-  }
-}
-```
+- **Edit and test locally.** Search a workspace, make focused edits, run tests, and inspect tool output as it streams.
+- **Manage long conversations.** See context usage and compact older working context while keeping the original transcript available.
+- **Choose the model.** Select a model and supported reasoning effort, or use Auto routing. The model picker settings let you hide models you rarely use.
+- **Connect OpenCode Go from source.** The current `main` branch supports OpenCode Go alongside ChatGPT. Add the inference key under **Settings → Models & accounts → OpenCode Go**. A separate service account key with **Usage: Read** lets CodeLithe retrieve your Go allowance.
+- **Use code intelligence and extensions.** Connect language servers, MCP servers, project skills, and local Python tools. Search the web or open JavaScript-rendered pages in a separate system webview.
+- **Bring existing work along.** Import readable Codex CLI history from **Settings → Application → Import conversations**. Optional **Remote Control** opens the UI through a password-protected tunnel while the agent keeps running on your computer.
 
-</details>
+### Permissions
 
-## Architecture
+| Mode | File edits | Shell commands |
+| --- | --- | --- |
+| **Ask** | Approval required | Approval required |
+| **Permit writes** | Allowed | Approval required |
+| **Auto** | Allowed | A separate model reviews commands and escalates uncertain cases |
+| **Bypass permissions** | Allowed | Allowed |
+
+An approval can apply once or to a scoped grant for the session. Shell commands run with your user privileges. These permission checks do not provide an operating-system sandbox.
+
+### Project configuration
+
+| File or folder | Purpose |
+| --- | --- |
+| `AGENTS.md` or `CLAUDE.md` | Repository instructions |
+| `.codelite/memory.md` | Project memory |
+| `.codelite/skills/` | On-demand skills |
+| `.codelite/mcp.json` and `.codelite/lsp.json` | MCP and language server configuration |
+| `.codelite/tools/` and `.codelite/plugins/` | Local Python tools and hooks |
+
+## Development
+
+The desktop layer uses Flask, pywebview, and plain JavaScript. The provider layer uses Python's standard library.
 
 ```mermaid
 flowchart LR
-    U[You] --> UI[Native CodeLithe window]
-    UI <--> R[Local Flask runtime]
-    R <--> A[Streaming agent loop]
-    A <--> P[ChatGPT OAuth provider]
-    A --> T[Workspace tools]
-    T --> F[Files · shell · web · images · LSP · MCP]
-    T -.-> B[Hidden browser — separate child process]
-    A <--> S[(SQLite conversations)]
+    UI["Native desktop window"] <--> App["Local Flask runtime"]
+    App <--> Agent["Streaming agent"]
+    Agent <--> Provider["Model provider"]
+    Agent <--> Tools["Workspace tools"]
+    Agent <--> Store[("SQLite history")]
 ```
 
-| Layer | Responsibility | Design |
-|---|---|---|
-| `codelite.provider` | ChatGPT OAuth, token refresh, Responses transport, images, optional local proxy | Standard-library only |
-| `codelite.agent` | Agent loop, prompts, routing, compaction, and tool orchestration | Streaming, context-aware workflow |
-| `codelite.tools` | Filesystem, shell, search, web, image, memory, planning, and questions | Workspace-scoped and permission-aware |
-| `codelite.browser` | A second, invisible pywebview window for JS-rendered pages | Its own child process, so a hung page can't take the app down |
-| `codelite.app` | Flask runtime, SSE, SQLite-backed conversations, and native window | Flask + pywebview desktop layer |
-
-The provider layer is a from-scratch Python implementation inspired by [EvanZhouDev/openai-oauth](https://github.com/EvanZhouDev/openai-oauth). The agent-loop structure took inspiration from [OpenCode](https://github.com/anomalyco/opencode). See [NOTICE](NOTICE) for attribution.
-
-## Deliberate constraints
-
-- The app binds to localhost only; it is a private desktop backend, not a network service.
-- There is no operating-system sandbox. Permission modes are the gate, and an approved command runs with your full user rights. `auto` is a good default and `ask` is the strict one, but neither is a kernel boundary — see [Which mode should you use?](#which-mode-should-you-use).
-- Shell calls are separate processes. CodeLithe carries the working directory between calls, not environment mutations, functions, or background jobs.
-- Web tools reject private, local, reserved, and credential-bearing destinations. Downloads and returned text are capped.
-- Context usage is tracked per conversation. Before the model reaches its input limit, older working context is compacted while the original transcript remains stored and visible.
-- pywebview needs a system webview backend: WebKitGTK on Linux or WebView2 on Windows.
-
-## Project layout
-
-```text
-run.py            Start the app from anywhere
-codelite/
-  provider/       OAuth, transport, SSE, images, limits, proxy
-  agent/          Agent loop, prompts, routing, safety judge
-  browser/        Hidden-webview child process for JS-rendered pages
-  tools/          Built-in and project-local capabilities
-  integrations/   Lazy MCP and LSP stdio clients
-  project/        Memory, instructions, skills, plugins
-  permission/     Modes and scoped approval manager
-  db/             SQLite conversation store
-  importer.py     Codex session history import
-  app/            Runtime, server, native window, vanilla UI
+```sh
+python -m pip install pytest
+python -m pytest tests -q
 ```
+
+Use `python run.py --help` for launch options and `python -m codelite.provider --help` for the standalone proxy. See [AGENTS.md](AGENTS.md) for architecture, packaging, and verification instructions. Report bugs and request features in [GitHub Issues](https://github.com/pythonIsFast/CodeLithe/issues).
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+[Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for attribution.
