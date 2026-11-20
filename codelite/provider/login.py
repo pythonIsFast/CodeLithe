@@ -41,9 +41,9 @@ def _callback_page(title: str, message: str) -> bytes:
     return f"""<!doctype html>
 <html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">
 <title>{html.escape(title)}</title><style>
-body{{margin:0;min-height:100vh;display:grid;place-items:center;background:#faf9f6;color:#2d2a26;
+body{{margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f6f5;color:#20262b;
 font:16px/1.5 system-ui,sans-serif}}main{{max-width:32rem;padding:2rem;text-align:center}}
-h1{{font-size:1.4rem}}p{{color:#6b6558}}
+h1{{font-size:1.4rem}}p{{color:#66707a}}
 </style></head><body><main><h1>{html.escape(title)}</h1><p>{html.escape(message)}</p></main></body></html>""".encode()
 
 
