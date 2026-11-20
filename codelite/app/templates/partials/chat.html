@@ -1,0 +1,127 @@
+        <section class="chat-column">
+          <section class="messages" id="messages" aria-live="polite">
+            <div class="empty" id="empty-state">
+              <div class="empty-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="28" height="28">
+                  <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                  <circle cx="12" cy="12" r="2.7" fill="currentColor"/>
+                </svg>
+              </div>
+              <h1>Code Lite</h1>
+              <p>What should we build?</p>
+            </div>
+          </section>
+
+          <div class="composer-area">
+            <div class="status-bar" id="status-bar" hidden>
+              <span class="spinner" aria-hidden="true"></span>
+              <span id="status-text">Working…</span>
+              <button class="stop" id="stop-run">Stop</button>
+            </div>
+
+            <form class="composer" id="composer">
+              <input type="file" id="attachment-picker" multiple hidden />
+              <div class="composer-context" id="composer-context" hidden>
+                <button type="button" class="context-chip" id="draft-environment"
+                        aria-haspopup="menu" aria-expanded="false">
+                  <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+                    <rect x="1.8" y="2.8" width="12.4" height="8.4" rx="1.5" fill="none"
+                          stroke="currentColor" stroke-width="1.3" />
+                    <path d="M5.5 13.5h5M8 11.2v2.3" fill="none" stroke="currentColor"
+                          stroke-width="1.3" stroke-linecap="round" />
+                  </svg>
+                  <span>This computer</span>
+                </button>
+                <div class="context-menu" id="environment-menu" role="menu" hidden>
+                  <button type="button" class="context-menu-item selected" data-environment="local"
+                          role="menuitem">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                      <rect x="1.8" y="2.8" width="12.4" height="8.4" rx="1.5" fill="none"
+                            stroke="currentColor" stroke-width="1.3" />
+                      <path d="M5.5 13.5h5M8 11.2v2.3" fill="none" stroke="currentColor"
+                            stroke-width="1.3" stroke-linecap="round" />
+                    </svg>
+                    <span>This computer</span>
+                    <svg class="check" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                      <path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor"
+                            stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </button>
+                  <button type="button" class="context-menu-item" id="environment-remote" role="menuitem">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                      <path d="M4.5 11.5a3.5 3.5 0 0 1 .6-6.9 4.2 4.2 0 0 1 8 1.1 3 3 0 0 1-.9 5.8z"
+                            fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+                    </svg>
+                    <span>Remote Control settings…</span>
+                  </button>
+                </div>
+                <button type="button" class="context-chip" id="draft-folder"
+                        title="Choose workspace folder">
+                  <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+                    <path d="M1.5 3.5A1 1 0 0 1 2.5 2.5h3l1 1.3h6.5a1 1 0 0 1 1 1v7.2a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"
+                          fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+                  </svg>
+                  <span id="draft-folder-name">No folder</span>
+                </button>
+              </div>
+              <div class="composer-attachments" id="composer-attachments" hidden></div>
+              <div class="composer-input">
+                <button type="button" class="composer-add" id="attach-files"
+                        title="Attach files" aria-label="Attach files">
+                  <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+                    <path d="M8 3v10M3 8h10" fill="none" stroke="currentColor"
+                          stroke-width="1.5" stroke-linecap="round" />
+                  </svg>
+                </button>
+                <textarea id="prompt" rows="1" placeholder="Ask Code Lite to change something…"
+                          autocomplete="off" spellcheck="false"></textarea>
+                <button type="submit" id="send" title="Send (Enter)" aria-label="Send">
+                  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                    <path d="M20 5v6a4 4 0 0 1-4 4H5" fill="none" stroke="currentColor"
+                          stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="m9 10-5 5 5 5" fill="none" stroke="currentColor"
+                          stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </button>
+              </div>
+              <div class="composer-foot">
+                <div class="custom-select pill-picker" data-select-picker>
+                  <select id="mode-select" class="custom-select-source" title="Permission mode" tabindex="-1"></select>
+                  <button type="button" class="custom-select-trigger" aria-haspopup="listbox" aria-expanded="false"></button>
+                  <div class="custom-select-menu" role="listbox" hidden></div>
+                </div>
+                <button type="button" class="compact-button" id="compact-context"
+                        title="Compact conversation context">Compact</button>
+                <span class="composer-foot-spacer"></span>
+                <div class="custom-select pill-picker" data-select-picker>
+                  <select id="model-select" class="custom-select-source" title="Model" tabindex="-1"></select>
+                  <button type="button" class="custom-select-trigger" aria-haspopup="listbox" aria-expanded="false"></button>
+                  <div class="custom-select-menu" role="listbox" hidden></div>
+                </div>
+                <div class="custom-select pill-picker" data-select-picker>
+                  <select id="effort-select" class="custom-select-source" title="Reasoning effort" tabindex="-1"></select>
+                  <button type="button" class="custom-select-trigger" aria-haspopup="listbox" aria-expanded="false"></button>
+                  <div class="custom-select-menu" role="listbox" hidden></div>
+                </div>
+                <button type="button" class="pill-toggle" id="fast-toggle" aria-pressed="false"
+                        title="Fast: 1.5x speed, increased usage" hidden>
+                  <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+                    <path d="M9 1.5 3.5 9.5H7l-1 5 5.5-8H8z" fill="none" stroke="currentColor"
+                          stroke-width="1.3" stroke-linejoin="round" />
+                  </svg>
+                  <span>Fast</span>
+                </button>
+                <span class="usage" id="usage" hidden title="">
+                  <svg class="usage-ring" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor"
+                            stroke-width="3" class="usage-ring-track" />
+                    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor"
+                            stroke-width="3" stroke-linecap="round" class="usage-ring-fill"
+                            id="usage-ring-fill" transform="rotate(-90 12 12)" />
+                  </svg>
+                  <span class="usage-label" id="usage-label"></span>
+                </span>
+              </div>
+            </form>
+          </div>
+        </section>

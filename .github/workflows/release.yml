@@ -141,7 +141,8 @@ jobs:
             kill -0 "$server" 2>/dev/null || { cat "$RUNNER_TEMP/serve.log"; exit 1; }
             sleep 1
           done
-          for path in / /static/app.js /static/style.css /api/meta; do
+          for path in / /static/js/01-core.js /static/js/15-bootstrap.js \
+                      /static/css/01-base.css /static/css/08-responsive.css /api/meta; do
             code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:10599$path")"
             echo "$path -> $code"
             [ "$code" = "200" ] || { cat "$RUNNER_TEMP/serve.log"; exit 1; }

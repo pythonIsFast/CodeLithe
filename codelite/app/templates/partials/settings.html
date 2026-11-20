@@ -1,0 +1,257 @@
+  <div class="overlay" id="settings-overlay" hidden>
+    <div class="dialog settings-dialog" role="dialog" aria-modal="true"
+         aria-labelledby="settings-title">
+      <header class="settings-head">
+        <div class="settings-brand">
+          <img src="{{ url_for('static', filename='icon.png') }}" alt="" width="32" height="32" />
+          <h2 id="settings-title">Settings</h2>
+        </div>
+        <label class="settings-search">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" aria-hidden="true">
+            <circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3 3" />
+          </svg>
+          <input id="settings-search" type="search" placeholder="Find a setting…"
+                 autocomplete="off" spellcheck="false" aria-label="Find a setting" />
+        </label>
+        <button type="button" class="dialog-close" id="settings-close"
+                aria-label="Close settings">×</button>
+      </header>
+      {% set sections = [
+        ('models', 'Models & accounts', [
+          ('account', 'ChatGPT', 'Manage your ChatGPT connection and banked rate-limit resets.'),
+          ('opencode-go', 'OpenCode Go', 'Manage inference credentials and track your Go allowance.'),
+          ('model-picker', 'Model picker', 'Choose which models appear in the composer.')]),
+        ('agent', 'Agent', []),
+        ('workspace', 'Workspace', [
+          ('memory', 'Global memory', 'Set instructions shared across every workspace.'),
+          ('project', 'Current project', 'Edit project memory and configure MCP and language servers.')]),
+        ('app', 'Application', [
+          ('remote', 'Remote Control', 'Access Code Lite from another device.'),
+          ('import', 'Import conversations', 'Bring in your conversation history from Codex.'),
+          ('updates', 'Updates', 'Check for a newer version of Code Lite.')])
+      ] %}
+      <nav class="settings-categories" aria-label="Settings categories">
+        {% for key, label, items in sections %}
+        <button type="button" data-settings-category="{{ key }}"
+                {% if loop.first %}aria-current="true"{% endif %}>{{ label }}</button>
+        {% endfor %}
+      </nav>
+      <div class="settings-body">
+        <nav class="settings-nav" aria-label="Settings pages" id="settings-page-nav">
+          {% for key, label, items in sections %}
+          <div class="settings-nav-group" data-settings-pages="{{ key }}" {% if not loop.first %}hidden{% endif %}>
+            {% for tab, title, description in items %}
+            <button type="button" class="settings-nav-item" data-settings-tab="{{ tab }}"
+                    data-description="{{ description }}" {% if tab == 'project' %}id="project-settings-tab" hidden{% endif %}
+                    {% if tab == 'account' %}aria-current="page"{% endif %}>{{ title }}</button>
+            {% endfor %}
+          </div>
+          {% endfor %}
+        </nav>
+
+        <div class="settings-content">
+          <header class="settings-page-head">
+            <p id="settings-page-category"></p>
+            <h3 id="settings-page-title" tabindex="-1">ChatGPT</h3>
+            <p id="settings-page-description"></p>
+          </header>
+          <div id="settings-search-results" hidden></div>
+          <section class="settings-panel go-settings" data-settings-panel="opencode-go" hidden>
+            <form id="go-keys">
+              <div class="settings-row">
+                <label class="settings-row-text" for="go-api-key">
+                  <span class="settings-row-title">Inference API key</span>
+                  <span class="account-detail" id="go-api-key-status"></span>
+                </label>
+                <input type="password" id="go-api-key" placeholder="Enter key" autocomplete="new-password" maxlength="1024" />
+                <button type="button" class="btn" id="go-remove-api-key">Remove</button>
+              </div>
+              <div class="settings-row">
+                <label class="settings-row-text" for="go-usage-key">
+                  <span class="settings-row-title">Service account key</span>
+                  <span class="account-detail" id="go-usage-key-status">Requires Usage: Read.</span>
+                </label>
+                <input type="password" id="go-usage-key" placeholder="Enter key" autocomplete="new-password" maxlength="1024" />
+                <button type="button" class="btn" id="go-remove-usage-key">Remove</button>
+              </div>
+              <p><button type="submit" class="btn primary">Save keys</button></p>
+              <p id="go-key-status" role="status"></p>
+            </form>
+            <div class="settings-block go-allowance">
+              <div class="settings-card-heading">
+                <h4 class="settings-row-title">Go usage limits</h4>
+                <button type="button" class="btn" id="go-refresh-usage">Refresh</button>
+              </div>
+              <div id="go-usage" role="status"></div>
+            </div>
+          </section>
+          <section class="settings-panel" data-settings-panel="model-picker" hidden>
+            <p class="account-detail">Choose which models appear in the composer. Existing chats keep their selected model.</p>
+            <form id="model-visibility">
+              <div id="model-visibility-list"></div>
+              <p><button type="submit" class="btn primary">Save model visibility</button></p>
+            </form>
+            <p id="model-visibility-status" role="status"></p>
+          </section>
+          <section class="settings-panel" data-settings-panel="account">
+            <div class="settings-row">
+              <div class="settings-row-text">
+                <div class="settings-row-title">ChatGPT account</div>
+                <p class="account-name" id="account-name">Not signed in</p>
+                <p class="account-detail" id="account-detail"></p>
+                <p class="auth-status" id="settings-auth-status"></p>
+                <div class="auth-manual" id="settings-auth-manual" hidden>
+                  <a class="btn" id="settings-auth-open-link" target="_blank" rel="noopener">Open login page</a>
+                  <button type="button" class="btn" id="settings-auth-copy-link">Copy login link</button>
+                </div>
+              </div>
+              <div class="settings-row-control">
+                <button type="button" class="btn" id="settings-login">Sign in again</button>
+              </div>
+            </div>
+            <div class="settings-row" id="banked-resets" hidden>
+              <div class="settings-row-text">
+                <div class="settings-row-title">Banked rate-limit resets</div>
+                <p class="account-detail">
+                  Undocumented ChatGPT feature: an eligible account occasionally
+                  gets a credit that clears the weekly limit early. Spend one only
+                  if you are about to hit the cap -- it does not refill itself.
+                </p>
+                <p class="account-detail" id="banked-resets-status">Checking…</p>
+              </div>
+              <div class="settings-row-control">
+                <button type="button" class="btn" id="banked-resets-redeem" hidden>
+                  Activate a banked reset
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-panel" data-settings-panel="remote" hidden>
+            <div class="settings-row">
+              <div class="settings-row-text">
+                <div class="settings-row-title">Remote Control</div>
+                <p class="account-detail">Access this Code Lite instance from another device. The agent and all tools continue running on this computer.</p>
+                <div id="remote-unsupported" hidden>Remote Control is currently available on Windows and Linux.</div>
+                <div id="remote-download-hint" hidden>
+                  <p class="account-detail">cloudflared is downloaded only when you request it and stored in the Code Lite data directory.</p>
+                </div>
+                <p class="auth-status" id="remote-status"></p>
+              </div>
+              <div class="settings-row-control">
+                <div id="remote-download" hidden>
+                  <button type="button" class="btn" id="remote-download-button">Download cloudflared</button>
+                </div>
+                <div id="remote-ready" hidden class="remote-actions-row">
+                  <button type="button" class="btn primary" id="remote-start">Start Remote Control</button>
+                  <button type="button" class="btn" id="remote-remove">Remove cloudflared</button>
+                </div>
+              </div>
+            </div>
+            <div class="settings-row" id="remote-active" hidden>
+              <div class="settings-row-text">
+                <div class="settings-row-title">Anyone with this URL and password can control Code Lite</div>
+                <label class="field-label" for="remote-url">Public URL</label>
+                <div class="remote-value-row"><input id="remote-url" readonly /><button type="button" class="btn" id="remote-copy-url">Copy</button></div>
+                <label class="field-label" for="remote-password">Password</label>
+                <div class="remote-value-row"><input id="remote-password" readonly /><button type="button" class="btn" id="remote-copy-password">Copy</button></div>
+              </div>
+              <div class="settings-row-control">
+                <button type="button" class="btn danger" id="remote-stop">Stop Remote Control</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-panel" data-settings-panel="memory" hidden>
+            <div class="settings-block">
+              <div class="settings-row-text">
+                <div class="settings-row-title">Global memory</div>
+                <p class="account-detail" id="global-memory-path"></p>
+              </div>
+              <label class="field">
+                <span>Shared across every project</span>
+                <textarea id="global-memory" rows="8" spellcheck="false"
+                          placeholder="Preferences and conventions that should apply everywhere"></textarea>
+              </label>
+              <div class="settings-block-actions">
+                <button type="button" class="btn" id="global-memory-save">Save global memory</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-panel" id="project-settings"
+                   data-settings-panel="project" hidden>
+            <div class="settings-block">
+              <div class="settings-row-text">
+                <div class="settings-row-title">Project memory</div>
+                <p class="account-detail" id="project-settings-path"></p>
+              </div>
+              <label class="field">
+                <span>Stable commands, conventions, and architecture decisions</span>
+                <textarea id="project-memory" rows="5" spellcheck="false"></textarea>
+              </label>
+              <div class="settings-block-actions">
+                <button type="button" class="btn" id="project-memory-save">Save memory</button>
+              </div>
+              <p class="account-detail" id="project-skills"></p>
+            </div>
+            <div class="settings-block">
+              <div class="settings-row-text">
+                <div class="settings-row-title">MCP servers</div>
+                <p class="account-detail">.codelite/mcp.json</p>
+              </div>
+              <textarea id="project-mcp-config" rows="6" spellcheck="false"></textarea>
+              <div class="settings-block-actions">
+                <button type="button" class="btn" id="project-mcp-save">Save MCP config</button>
+              </div>
+            </div>
+            <div class="settings-block">
+              <div class="settings-row-text">
+                <div class="settings-row-title">Language servers</div>
+                <p class="account-detail">.codelite/lsp.json</p>
+              </div>
+              <textarea id="project-lsp-config" rows="6" spellcheck="false"></textarea>
+              <div class="settings-block-actions">
+                <button type="button" class="btn" id="project-lsp-save">Save LSP config</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-panel" data-settings-panel="updates" hidden>
+            <div class="settings-row" id="settings-update" hidden>
+              <div class="settings-row-text">
+                <div class="settings-row-title">Code Lite update</div>
+                <p class="account-detail" id="update-status"></p>
+              </div>
+              <div class="settings-row-control">
+                <button type="button" class="btn" id="update-button">Check for updates</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-panel" data-settings-panel="import" hidden>
+            <div class="settings-row">
+              <div class="settings-row-text">
+                <div class="settings-row-title">Import from Codex</div>
+                <p class="account-detail" id="import-summary">Looking for Codex sessions…</p>
+                <p class="settings-note">
+                  Every session the Codex CLI recorded becomes a conversation here, with
+                  its original date and workspace. Running this again only picks up
+                  what is new, so nothing is imported twice.
+                </p>
+                <p class="settings-note">
+                  Imported chats are readable history: tool calls come across as text
+                  rather than as replayable tool cards, and Codex's internal reasoning
+                  is left out because it cannot be replayed in a new conversation.
+                </p>
+              </div>
+              <div class="settings-row-control">
+                <button type="button" class="btn" id="codex-import" disabled>Import</button>
+              </div>
+            </div>
+            <p class="auth-status" id="import-status"></p>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>

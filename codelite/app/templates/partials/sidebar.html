@@ -1,0 +1,54 @@
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-inner">
+        <button class="new-session" id="new-chat" type="button">
+          <span class="new-session-plus" aria-hidden="true">+</span>
+          <span>New session</span>
+        </button>
+
+        <nav class="side-nav" aria-label="Navigation">
+          <button type="button" class="side-nav-item" id="side-search" aria-expanded="false">
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+              <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.4" />
+              <path d="m10.5 10.5 3 3" fill="none" stroke="currentColor"
+                    stroke-width="1.4" stroke-linecap="round" />
+            </svg>
+            <span>Search</span>
+          </button>
+          <button type="button" class="side-nav-item" id="side-customize">
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+              <path d="M3 4.5h10M3 8h10M3 11.5h10" fill="none" stroke="currentColor"
+                    stroke-width="1.4" stroke-linecap="round" />
+              <circle cx="6" cy="4.5" r="1.5" fill="currentColor" />
+              <circle cx="10" cy="8" r="1.5" fill="currentColor" />
+              <circle cx="7" cy="11.5" r="1.5" fill="currentColor" />
+            </svg>
+            <span>Customize</span>
+          </button>
+        </nav>
+
+        <div class="side-search" id="side-search-field" hidden>
+          <input id="conversation-filter" type="text" placeholder="Search sessions"
+                 autocomplete="off" spellcheck="false" aria-label="Search sessions" />
+        </div>
+
+        <div class="side-section-label">Recents</div>
+        <nav class="conversations" id="conversations" aria-label="Sessions"></nav>
+      </div>
+      <footer class="sidebar-foot">
+        <div class="sidebar-foot-left">
+          <img class="sidebar-logo" src="{{ url_for('static', filename='icon.png') }}" alt="" />
+          <span id="tool-count"></span>
+        </div>
+        <div class="sidebar-foot-actions">
+          <button type="button" class="sidebar-update" id="sidebar-update" hidden></button>
+          <button type="button" class="sidebar-remote" id="sidebar-remote" hidden>● Remote</button>
+          <button type="button" class="settings-button" id="settings-button"
+                  title="Settings" aria-label="Settings">
+            <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
+              <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8" />
+              <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        </div>
+      </footer>
+    </aside>

@@ -1,0 +1,58 @@
+  <div class="overlay" id="permission-overlay" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="perm-title">
+      <h2 id="perm-title">Permission needed</h2>
+      <p class="perm-kind" id="perm-kind"></p>
+      <pre class="perm-detail" id="perm-detail"></pre>
+      <p class="perm-scope" id="perm-scope"></p>
+      <pre class="perm-diff" id="perm-diff" hidden></pre>
+      <div class="perm-judge" id="perm-judge" hidden>
+        <strong>The safety model blocked this:</strong>
+        <p id="perm-judge-reason"></p>
+      </div>
+      <input class="perm-feedback" id="perm-feedback" type="text"
+             placeholder="Optional: tell the agent why (sent on deny)" />
+      <div class="perm-actions">
+        <button class="btn ghost" id="perm-deny">Deny</button>
+        <button class="btn" id="perm-session">Allow this scope for session</button>
+        <button class="btn primary" id="perm-once">Allow once</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="rename-overlay" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="rename-title">
+      <h2 id="rename-title">Rename conversation</h2>
+      <label class="field">
+        <span>Title</span>
+        <input id="rename-input" type="text" maxlength="200" spellcheck="false" />
+      </label>
+      <div class="perm-actions">
+        <button class="btn" id="rename-cancel">Cancel</button>
+        <button class="btn primary" id="rename-save">Rename</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="confirm-overlay" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <h2 id="confirm-title">Delete conversation</h2>
+      <p class="confirm-text" id="confirm-text"></p>
+      <div class="perm-actions">
+        <button class="btn" id="confirm-cancel">Cancel</button>
+        <button class="btn danger" id="confirm-ok">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="question-overlay" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="question-title">
+      <h2 id="question-title">Question</h2>
+      <p class="question-text" id="question-text"></p>
+      <div class="question-options" id="question-options"></div>
+      <input class="perm-feedback" id="question-answer" type="text" placeholder="Type your answer…" />
+      <div class="perm-actions">
+        <button class="btn ghost" id="question-cancel">Cancel</button>
+        <button class="btn primary" id="question-submit">Send answer</button>
+      </div>
+    </div>
+  </div>

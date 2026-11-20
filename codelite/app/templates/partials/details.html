@@ -1,0 +1,67 @@
+        <aside class="details" id="details-panel" aria-label="Session details">
+          <section class="detail-card">
+            <h3>Environment</h3>
+            <div class="detail-row">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                <rect x="1.8" y="2.8" width="12.4" height="8.4" rx="1.5" fill="none"
+                      stroke="currentColor" stroke-width="1.3" />
+                <path d="M5.5 13.5h5M8 11.2v2.3" fill="none" stroke="currentColor"
+                      stroke-width="1.3" stroke-linecap="round" />
+              </svg>
+              <span class="detail-text">This computer</span>
+              <span class="detail-badge">Local</span>
+            </div>
+            <div class="detail-row" id="detail-workspace-row">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                <path d="M1.5 3.5A1 1 0 0 1 2.5 2.5h3l1 1.3h6.5a1 1 0 0 1 1 1v7.2a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"
+                      fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+              </svg>
+              <span class="detail-stack">
+                <span class="detail-text" id="detail-workspace-name">No folder</span>
+                <span class="detail-sub" id="detail-workspace-path"></span>
+              </span>
+            </div>
+            <div class="detail-row">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                <path d="M8 2.2 13 4v3.5c0 2.7-2 4.9-5 6.2-3-1.3-5-3.5-5-6.2V4z"
+                      fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+                <path d="m5.8 7.7 1.5 1.5 2.9-2.9" fill="none" stroke="currentColor"
+                      stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              <span class="detail-text" id="detail-mode">Ask</span>
+            </div>
+            <button type="button" class="detail-row detail-button" id="detail-remote"
+                    aria-label="Remote Control settings">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                <path d="M4.5 11.5a3.5 3.5 0 0 1 .6-6.9 4.2 4.2 0 0 1 8 1.1 3 3 0 0 1-.9 5.8z"
+                      fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+              </svg>
+              <span class="detail-text">Remote Control</span>
+              <span class="detail-switch" id="detail-remote-state" aria-hidden="true"></span>
+            </button>
+          </section>
+
+          <section class="detail-card">
+            <h3>Context <span class="detail-value" id="detail-context-pct">—</span></h3>
+            <div class="detail-bar"><span id="detail-context-bar"></span></div>
+            <p class="detail-note" id="detail-context-note">No session open</p>
+          </section>
+
+          <section class="detail-card" id="detail-plan-card" hidden>
+            <h3>
+              Plan usage
+              <span class="usage plan" id="plan-usage" hidden title="">
+                <svg class="usage-ring" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor"
+                          stroke-width="3" class="usage-ring-track" />
+                  <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor"
+                          stroke-width="3" stroke-linecap="round" class="usage-ring-fill"
+                          id="plan-ring-fill" transform="rotate(-90 12 12)" />
+                </svg>
+                <span id="plan-label"></span>
+              </span>
+            </h3>
+            <div class="detail-bar"><span class="plan" id="detail-plan-bar"></span></div>
+            <p class="detail-note" id="detail-plan-note">Weekly allowance</p>
+          </section>
+        </aside>
