@@ -1,0 +1,55 @@
+/* Part of the Code Lite UI. Loaded in this order from index.html; no build step. */
+
+/* -- Narrow windows ------------------------------------------------------ */
+
+@media (max-width: 1150px) {
+  :root { --details-width: 280px; }
+  .messages { padding-left: 24px; padding-right: 24px; }
+}
+
+@media (max-width: 900px) {
+  .sidebar { width: 218px; flex-basis: 218px; }
+  .messages { padding: 18px 18px 8px; }
+  .composer-area { padding: 4px 16px 12px; }
+}
+
+@media (max-width: 720px) {
+  .sidebar { width: 62px; flex-basis: 62px; }
+  .sidebar-inner { padding: 10px 6px; }
+  .new-session { justify-content: center; padding: 7px 0; }
+  .new-session span:last-child,
+  .side-nav-item span,
+  #side-search,
+  .side-search,
+  .side-section-label,
+  .conv-title,
+  .sidebar-foot-left,
+  .sidebar-update,
+  .sidebar-remote { display: none; }
+  .side-nav-item { justify-content: center; padding: 7px 0; }
+  .conv-group-head { justify-content: center; padding: 5px 0; }
+  .conv-group-name, .conv-group-add { display: none; }
+  .conv { padding-left: 6px; }
+  .messages { padding: 16px 14px 6px; }
+  .composer-area { padding: 4px 10px 10px; }
+}
+
+@media (max-width: 640px) {
+  #settings-overlay { padding: 6px; }
+  .settings-dialog { height: calc(100vh - 12px); border-radius: var(--radius-lg); }
+  .settings-head { padding: 11px; gap: 8px; }
+  .settings-brand { gap: 6px; }
+  .settings-brand img { width: 24px; height: 24px; }
+  .settings-brand h2 { font-size: 15px; }
+  .settings-search { padding-inline: 7px; gap: 5px; }
+  .settings-search input { font-size: 12px; }
+  .settings-categories { padding-inline: 5px; gap: 2px; }
+  .settings-categories button { padding-inline: 9px; font-size: 12px; }
+  .settings-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .settings-nav { padding: 5px 8px; border-right: 0; border-bottom: 1px solid var(--border); }
+  .settings-nav-group { display: flex; width: max-content; }
+  .settings-nav-item { white-space: nowrap; flex: none; min-height: 34px; padding: 5px 8px; }
+  .settings-content { padding: 18px 12px 24px; }
+  .settings-panel > .settings-row,
+  .settings-block, .settings-card, #go-keys, #model-visibility-list { padding: 12px; }
+}

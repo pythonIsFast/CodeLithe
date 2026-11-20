@@ -1,0 +1,79 @@
+/*
+ * Copyright 2026 Code Lite contributors
+ * Licensed under the Apache License, Version 2.0.
+ *
+ * Vanilla CSS, no framework and no build step. Dark-only. The palette is
+ * Code Lite's own: cool graphite surfaces with a slight blue cast, a teal
+ * accent, amber for the manual/plan mode, indigo for context/usage, and
+ * green/red only for diffs. It is deliberately NOT derived from any other
+ * product's screenshots -- do not sample competitor UIs into these tokens.
+ */
+
+:root {
+  color-scheme: dark;
+  --accent: #2fa88f;
+  --accent-strong: #4cc3ab;
+  --accent-soft: rgba(47, 168, 143, .14);
+  --gold: #c9932e;            /* manual/plan mode colour */
+  --blue: #4d8af0;            /* context ring, toggles, usage */
+  --bg: #16181d;
+  --bg-sunken: #131519;
+  --bg-raised: #1f2229;
+  --bg-hover: #262a33;
+  --bg-composer: #232732;
+  --bg-sidebar: #1b1e24;
+  --border: #2a2e38;
+  --border-strong: #3a4050;
+  --text: #e9ecf1;
+  --text-dim: #9aa3b2;
+  --text-faint: #7d8595;
+  --code-bg: #101216;
+  --danger: #e5534b;
+  --ok: #3fbf50;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 18px;
+  --sidebar-width: 248px;
+  --details-width: 300px;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font: 13.5px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+
+.app { display: flex; height: 100vh; background: var(--bg); }
+.app.sidebar-collapsed .sidebar { display: none; }
+
+
+/* -- Toast --------------------------------------------------------------- */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  max-width: 70ch;
+  padding: 9px 15px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .1);
+  font-size: 13px;
+  z-index: 30;
+}
+.toast.error { border-color: var(--danger); color: var(--danger); }

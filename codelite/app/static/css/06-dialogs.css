@@ -1,0 +1,71 @@
+/* Part of the Code Lite UI. Loaded in this order from index.html; no build step. */
+
+/* -- Overlays ------------------------------------------------------------ */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, .45);
+  z-index: 20;
+}
+/* Author styles beat the UA [hidden]{display:none} rule regardless of
+   specificity, so .overlay's own `display: grid` above was winning even
+   while the `hidden` attribute was set -- this selector wins that back. */
+.overlay[hidden] { display: none; }
+
+/* Author display rules (.settings-row, .remote-actions-row) would beat the UA
+   [hidden] rule the same way .overlay's did -- win it back explicitly. */
+.settings-row[hidden],
+.remote-actions-row[hidden] { display: none; }
+
+.dialog {
+  width: 100%;
+  max-width: 520px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
+}
+.dialog h2 { margin: 0 0 4px; font-size: 16px; }
+
+.dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dialog-head h2 { margin: 0; }
+.dialog-close { width: 30px; height: 30px; padding: 0; font-size: 22px; line-height: 1; }
+
+.auth-overlay { z-index: 25; background: var(--bg); }
+#settings-overlay.provider-setup { z-index: 26; }
+.auth-dialog { max-width: 440px; text-align: center; padding: 34px; }
+.auth-dialog > p { color: var(--text-dim); margin: 8px auto 24px; max-width: 34ch; }
+.auth-logo { width: 48px; height: 48px; border-radius: 12px; margin-bottom: 12px; }
+.auth-dialog h2 { font-size: 21px; }
+
+.chatgpt-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  min-width: 230px;
+  min-height: 50px;
+  padding: 12px 20px;
+  border: 1px solid #d9d9d9;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  font-size: 15px;
+  font-weight: 550;
+}
+.chatgpt-button:hover { background: #f7f7f7; border-color: #bdbdbd; }
+.chatgpt-button:disabled { opacity: .65; cursor: wait; }
+.chatgpt-mark { font-size: 21px; line-height: 1; }
+.auth-manual { display: flex; justify-content: flex-start; gap: 8px; margin-top: 12px; }
+.auth-dialog .auth-manual { justify-content: center; }
+.auth-manual[hidden] { display: none; }
+.auth-status { min-height: 20px; margin: 12px 0 0 !important; color: var(--text-dim); font-size: 12.5px; }
+.auth-status.error { color: var(--danger); }
+.remote-value-row { display: flex; gap: 7px; margin: 5px 0 13px; }
+.remote-value-row input { flex: 1; min-width: 0; }
+.field-label { display: block; margin-top: 12px; color: var(--text-dim); font-size: 12px; }

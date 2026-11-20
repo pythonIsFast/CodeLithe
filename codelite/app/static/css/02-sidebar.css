@@ -1,0 +1,263 @@
+/* Part of the Code Lite UI. Loaded in this order from index.html; no build step. */
+
+/* -- Sidebar ------------------------------------------------------------- */
+
+.sidebar {
+  width: var(--sidebar-width);
+  flex: 0 0 var(--sidebar-width);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-sidebar);
+}
+
+.sidebar-inner {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 10px 8px 12px;
+}
+
+.new-session {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font-weight: 500;
+  text-align: left;
+}
+.new-session:hover { background: var(--bg-hover); color: var(--text); }
+.new-session-plus {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  font-size: 19px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.side-nav { display: flex; flex-direction: column; gap: 1px; margin-top: 2px; }
+.side-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  text-align: left;
+}
+.side-nav-item:hover { background: var(--bg-hover); }
+.side-nav-item svg { flex: 0 0 auto; opacity: .85; }
+
+.side-search { padding: 6px 2px 2px; }
+.side-search input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: 12.5px;
+  outline: none;
+}
+.side-search input:focus { border-color: var(--text-faint); }
+.side-search input::placeholder { color: var(--text-faint); }
+
+.side-section-label {
+  padding: 16px 10px 6px;
+  color: var(--text-faint);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.conversations {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 0;
+}
+
+.conv-group + .conv-group { margin-top: 12px; }
+
+.conv-group-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: left;
+}
+.conv-group-head:hover { background: var(--bg-hover); }
+.conv-group-head svg { flex: 0 0 auto; opacity: .7; }
+.conv-group-chevron { transition: transform .12s; }
+.conv-group.collapsed .conv-group-chevron { transform: rotate(-90deg); }
+.conv-group-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conv-group-add {
+  flex: 0 0 auto;
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  opacity: 0;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.conv-group-head:hover .conv-group-add { opacity: 1; }
+.conv-group-add:hover { color: var(--accent); }
+.conv-group.collapsed .conv-group-body { display: none; }
+
+.conv-empty {
+  padding: 8px 12px;
+  color: var(--text-faint);
+  font-size: 12.5px;
+}
+
+/* A row, not a button: it holds two of them (open, and the menu), and a
+   button inside a button is invalid and unpredictable. `position: relative`
+   anchors the menu popup to the row. */
+.conv {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding-left: 12px;
+  border-radius: 8px;
+  color: var(--text-dim);
+  transition: background .12s, color .12s;
+}
+.conv:hover { background: var(--bg-hover); color: var(--text); }
+.conv.active { background: var(--bg-hover); color: var(--text); font-weight: 500; }
+.conv.menu-open { background: var(--bg-hover); color: var(--text); }
+
+.conv-open {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  padding: 7px 0 7px 8px;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  font-size: 13px;
+}
+.conv-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.conv-menu-btn {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  margin-right: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-faint);
+  opacity: 0;
+}
+/* Stays visible while its menu is open, otherwise the control vanishes from
+   under the pointer the moment the mouse moves into the menu. */
+.conv:hover .conv-menu-btn,
+.conv.menu-open .conv-menu-btn { opacity: 1; }
+.conv-menu-btn:hover { background: var(--bg-sunken); color: var(--text); }
+
+/* Fixed, and a child of <body>: the conversation list scrolls, and an
+   absolutely positioned menu would be clipped by that overflow. Coordinates
+   come from placeConversationMenu(). */
+.conv-menu {
+  position: fixed;
+  z-index: 200;
+  min-width: 150px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .14);
+}
+.conv-menu button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 10px;
+  background: none;
+  text-align: left;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 400;
+}
+.conv-menu button:hover { background: var(--bg-sunken); }
+.conv-menu button.destructive { color: var(--danger); }
+.conv-menu button.destructive:hover { background: color-mix(in srgb, var(--danger) 10%, var(--bg-raised)); }
+
+.sidebar-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 11.5px;
+}
+.sidebar-foot-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.sidebar-logo { width: 18px; height: 18px; border-radius: 5px; opacity: .9; }
+.sidebar-foot-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.settings-button, .dialog-close {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-faint);
+}
+.settings-button { width: 28px; height: 28px; padding: 0; }
+.sidebar-update {
+  max-width: 145px;
+  overflow: hidden;
+  padding: 4px 7px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-raised));
+  color: var(--text);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-update:hover { border-color: var(--accent); }
+.sidebar-remote {
+  padding: 4px 7px;
+  border: 0;
+  background: none;
+  color: var(--ok);
+  font-size: 11px;
+}
+.sidebar-remote:hover { color: var(--text); }
+.settings-button:hover, .dialog-close:hover { background: var(--bg-raised); color: var(--text); }
