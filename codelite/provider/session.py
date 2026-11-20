@@ -36,6 +36,7 @@ from .chat import (
 )
 from .config import ProviderConfig
 from .limits import RateLimits
+from .opencode_go import OpenCodeGo, is_go_model
 from .pollinations import POLLINATIONS_MODEL, PollinationsTransport
 from .images import (
     ImageRequestError,
@@ -58,6 +59,7 @@ class Session:
         self.config = config or ProviderConfig()
         self._transport = CodexTransport(self.config, self._resolve_auth)
         self._pollinations = PollinationsTransport()
+        self.opencode_go = OpenCodeGo(self.config.auth_file_path.with_name("opencode-go.json"))
         self.use_pollinations_free = False
 
     def _resolve_auth(self) -> EffectiveAuth:
@@ -87,7 +89,7 @@ class Session:
         Empty lists when the catalog is unreachable, so a caller falls back
         rather than offering a level the model would reject.
         """
-        if self.use_pollinations_free:
+        if is_go_model(model) or self.use_pollinations_free:
             return {"efforts": [], "default_effort": "", "fast": False, "flex": False}
         info = self._transport.resolve_model_info(model)
         if info is None:
@@ -118,6 +120,10 @@ class Session:
         ``None`` when the catalog is unreachable or does not know the model --
         callers should fall back rather than substitute a guess.
         """
+        if is_go_model(model):
+            info = self.opencode_go.models().get(model, {})
+            window = (info.get("limit") or {}).get("context")
+            return window if type(window) is int and window > 0 else None
         if self.use_pollinations_free:
             return None
         info = self._transport.resolve_model_info(model)
@@ -128,9 +134,11 @@ class Session:
     # -- responses -------------------------------------------------------------
 
     def send_responses(
-        self, body: dict[str, Any], *, stream: bool = False
+        self, body: dict[str, Any], *, stream: bool = False, session_id: str = ""
     ) -> dict[str, Any] | Iterator[bytes]:
         """Send a raw Responses-shaped request through the active provider."""
+        if is_go_model(body.get("model")):
+            return self.opencode_go.send(body, stream=stream, session_id=session_id)
         if self.use_pollinations_free:
             return self._pollinations.send_responses_request(body, stream=stream)
         return self._transport.send_responses_request(body, stream=stream)

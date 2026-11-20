@@ -256,24 +256,71 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
 
     @app.get("/api/models")
     def models():
+        runtime = rt()
+        session = runtime.session
+        free_mode = runtime.config.use_pollinations_free
+        errors = []
+        slugs = []
+        capabilities = {}
         try:
-            session = rt().session
-            slugs = chat_models(session.list_models(), session.config.image_model)
-            # Per model, because the levels genuinely differ and the Fast tier
-            # is not offered for every model -- gpt-5.4-mini has none.
-            return jsonify(
-                {
-                    "models": slugs,
-                    "free_mode": rt().config.use_pollinations_free,
-                    "efforts": list(REASONING_EFFORTS),
-                    "capabilities": {
-                        slug: session.model_capabilities(slug) for slug in slugs
-                    },
-                }
-            )
-        except AuthError as error:
-            return jsonify({"error": str(error), "kind": "auth"}), 401
-        except Exception as error:  # noqa: BLE001 - surfaced to the UI as-is
+            chat = chat_models(session.list_models(), session.config.image_model)
+            slugs.extend(chat)
+            if chat and not free_mode:
+                slugs.insert(0, "auto")
+            capabilities.update({model: session.model_capabilities(model) for model in chat})
+        except AuthError:
+            pass  # OpenCode Go can be used without a ChatGPT account.
+        except Exception:
+            errors.append("Could not load ChatGPT models.")
+            if login_manager().status().get("authenticated"):
+                slugs.extend(["auto", runtime.config.agent_model])
+
+        labels = {"auto": "Auto"}
+        try:
+            for model, info in session.opencode_go.models().items():
+                slugs.append(model)
+                labels[model] = f"{info.get('name') or model.split('/', 1)[1]} · OpenCode Go"
+                capabilities[model] = session.model_capabilities(model)
+        except (OSError, ValueError, RuntimeError) as error:
+            errors.append(str(error))
+
+        return jsonify({
+            "models": list(dict.fromkeys(slugs)),
+            "labels": labels,
+            "hidden_models": runtime.store.get_state("hidden_picker_models") or [],
+            "free_mode": free_mode,
+            "efforts": list(REASONING_EFFORTS),
+            "capabilities": capabilities,
+            "errors": errors,
+        })
+
+    @app.put("/api/settings/model-picker")
+    def save_model_picker():
+        hidden = _body().get("hidden_models")
+        if not isinstance(hidden, list) or len(hidden) > 500 or any(
+            not isinstance(model, str) or not model or len(model) > 200 for model in hidden
+        ):
+            return jsonify({"error": "Invalid hidden model list."}), 400
+        rt().store.set_state("hidden_picker_models", list(dict.fromkeys(hidden)))
+        return jsonify({"saved": True})
+
+    @app.route("/api/settings/opencode-go", methods=["GET", "PUT"])
+    def opencode_go_settings():
+        go = rt().session.opencode_go
+        if request.method == "PUT":
+            if remote_manager().is_remote_host(request.host):
+                return jsonify({"error": "Change API keys in the local Code Lite window."}), 403
+            try:
+                go.save(_body())
+            except ValueError as error:
+                return jsonify({"error": str(error)}), 400
+        return jsonify(go.status())
+
+    @app.get("/api/usage/opencode-go")
+    def opencode_go_usage():
+        try:
+            return jsonify({"usage": rt().session.opencode_go.usage()})
+        except (OSError, ValueError, RuntimeError) as error:
             return jsonify({"error": str(error)}), 502
 
     # -- Remote Control -------------------------------------------------------
@@ -329,6 +376,7 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
     def auth_status():
         status = login_manager().status()
         status["free_mode"] = rt().config.use_pollinations_free
+        status["opencode_go"] = rt().session.opencode_go.status()["api_key_configured"]
         return jsonify(status)
 
     @app.post("/api/auth/login")

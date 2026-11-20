@@ -38,6 +38,7 @@ from .. import settings
 from ..config import FAST_SERVICE_TIER, FLEX_SERVICE_TIER, AppConfig, context_window_for, normalize_effort
 from ..db.store import Conversation, Store
 from ..permission.manager import PermissionDenied, PermissionManager
+from ..provider.opencode_go import is_go_model
 from ..provider.pollinations import POLLINATIONS_MODEL
 from ..provider.session import Session
 from ..provider.sse import iterate_server_sent_events
@@ -171,7 +172,7 @@ class AgentRunner:
         self._run_tokens_used = 0
         self._run_model = (
             POLLINATIONS_MODEL
-            if self._config.use_pollinations_free
+            if self._config.use_pollinations_free and not is_go_model(self._conversation.model)
             else self._conversation.model
         )
         # Whatever the user picked holds for the whole run. Auto may replace it
@@ -329,6 +330,13 @@ class AgentRunner:
             self._publish_plan_usage()
 
             output_items = [i for i in (response.get("output") or []) if isinstance(i, dict)]
+            if is_go_model(self._run_model):
+                # Save portable history so the chat can continue on Codex.
+                output_items = [
+                    {k: v for k, v in item.items() if k != "id"}
+                    for item in output_items
+                    if item.get("type") in ("message", "function_call")
+                ]
             if output_items:
                 items.extend(output_items)
                 self._store.append_items(self._conversation.id, output_items, turn_meta)
@@ -415,6 +423,8 @@ class AgentRunner:
         run's own model is guaranteed to fit: that history already fits
         there today, which is the only reason it hasn't failed outright.
         """
+        if is_go_model(self._run_model):
+            return self._run_model
         configured = self._config.compaction_model
         if configured == self._run_model:
             return configured
@@ -451,7 +461,7 @@ class AgentRunner:
             {"context_tokens": self._conversation.context_tokens},
         )
         try:
-            response = self._session.send_responses(
+            response = self._send_model_request(
                 {
                     "model": self._compaction_model(),
                     "instructions": COMPACTION_INSTRUCTIONS,
@@ -661,6 +671,11 @@ class AgentRunner:
         """
         return True
 
+    def _send_model_request(self, body: dict[str, Any], *, stream: bool):
+        if is_go_model(body.get("model")):
+            return self._session.send_responses(body, stream=stream, session_id=self._conversation.id)
+        return self._session.send_responses(body, stream=stream)
+
     def _request_turn(self, items: list[dict[str, Any]]) -> dict[str, Any] | None:
         body = {
             "model": self._run_model,
@@ -692,7 +707,7 @@ class AgentRunner:
             body["service_tier"] = FAST_SERVICE_TIER
         elif self._conversation.flex_mode and self._model_supports_flex():
             body["service_tier"] = FLEX_SERVICE_TIER
-        chunks = self._session.send_responses(body, stream=True)
+        chunks = self._send_model_request(body, stream=True)
         if isinstance(chunks, dict):  # Defensive: stream=True should never buffer.
             return chunks
         return self._consume_stream(chunks)
