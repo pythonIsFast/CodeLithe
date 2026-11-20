@@ -145,3 +145,79 @@ def test_fast_is_omitted_for_a_model_without_the_tier() -> None:
         runner = _runner(Path(tmp), session, fast_mode=1)
         runner._request_turn([])
         assert "service_tier" not in session.bodies[0]
+
+
+def _call(name, call_id, **arguments):
+    import json
+    return {
+        "type": "function_call", "name": name, "call_id": call_id,
+        "arguments": json.dumps(arguments),
+    }
+
+
+def test_edit_continuation_uses_less_effort_but_failure_restores_it(tmp_path: Path):
+    replies = iter([
+        [_call("write_file", "write", path="result.txt", content="finished")],
+        [_call("edit_file", "edit", path="result.txt", old_string="missing", new_string="changed")],
+        [],
+    ])
+
+    class ToolSession(FakeSession):
+        def send_responses(self, body, *, stream=False):
+            self.bodies.append(body)
+            return {"output": next(replies), "status": "completed"}
+
+    session = ToolSession()
+    runner = _runner(tmp_path, session, reasoning_effort="high")
+    runner._permissions.set_mode(Mode.PERMIT_WRITES)
+    runner.run("Write the result")
+
+    assert (tmp_path / "result.txt").read_text() == "finished"
+    assert [body["reasoning"]["effort"] for body in session.bodies] == ["high", "low", "high"]
+    runner._config.lean_edit_continuations = False
+    assert runner._edit_continuation_effort() == "high"
+
+
+def test_file_reads_overlap_but_never_cross_a_write(tmp_path: Path, monkeypatch):
+    from threading import Barrier, Event
+
+    from codelite.tools import registry
+    from codelite.tools.base import Tool
+    from codelite.tools.context import ToolContext
+
+    runner = _runner(tmp_path, FakeSession())
+    first_pair = Barrier(2, timeout=2)
+    first_finished, second_finished, written = Event(), Event(), Event()
+
+    def read(arguments, context):
+        name = arguments["path"]
+        if name == "after":
+            assert written.is_set()
+        else:
+            first_pair.wait()
+            if name == "first":
+                assert second_finished.wait(2)
+                first_finished.set()
+            else:
+                second_finished.set()
+        return name
+
+    def write(arguments, context):
+        assert first_finished.is_set() and second_finished.is_set()
+        written.set()
+        return "written"
+
+    tools = {
+        "read_file": Tool(name="read_file", description="", parameters={}, run=read),
+        "write_file": Tool(name="write_file", description="", parameters={}, run=write),
+    }
+    monkeypatch.setattr(registry, "get", tools.get)
+    outcomes = runner._execute_calls([
+        _call("read_file", "one", path="first"),
+        _call("read_file", "two", path="second"),
+        _call("write_file", "three"),
+        _call("read_file", "four", path="after"),
+    ], ToolContext(workspace=tmp_path, permissions=runner._permissions, session=runner._session))
+
+    assert [item["call_id"] for item, ok in outcomes if ok] == ["one", "two", "three", "four"]
+    assert written.is_set()

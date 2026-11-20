@@ -54,6 +54,8 @@ function checkBusyRun() {
 }
 
 function resetLive() {
+  if (state.liveTextFrame !== null) cancelAnimationFrame(state.liveTextFrame);
+  state.liveTextFrame = null;
   state.liveText = null;
   state.liveReasoning = null;
   state.liveTodos = null;
@@ -114,8 +116,8 @@ function connectStream(conversationId) {
     if (!state.liveText) state.liveText = append(assistantBubble(""));
     const bubble = state.liveText;
     bubble.dataset.raw += data.delta || "";
-    bubble.innerHTML = formatMarkdown(bubble.dataset.raw);
-    scrollDown();
+    // Keep streaming visually, with at most one Markdown render per frame.
+    if (state.liveTextFrame === null) state.liveTextFrame = requestAnimationFrame(paintLiveText);
   });
 
   on("reasoning_delta", (data) => {

@@ -104,13 +104,20 @@ function attachFooter(bubble, { at, outputTokens } = {}) {
   return footer;
 }
 
-/**
- * Close out the streaming bubble and give it its footer.
- *
- * Has to happen after the last delta: `text_delta` rebuilds the bubble's
- * innerHTML each time, which would throw away an already-appended footer.
- */
+function paintLiveText() {
+  if (state.liveTextFrame === null) return;
+  cancelAnimationFrame(state.liveTextFrame);
+  state.liveTextFrame = null;
+  const bubble = state.liveText;
+  if (!bubble?.isConnected) return;
+  const stick = atBottom();
+  bubble.innerHTML = formatMarkdown(bubble.dataset.raw);
+  if (stick) scrollDown(true);
+}
+
+/** Flush the last deltas before attaching a footer or starting a tool row. */
 function finalizeLiveText() {
+  paintLiveText();
   const bubble = state.liveText;
   state.liveText = null;
   if (!bubble || !bubble.isConnected) return;

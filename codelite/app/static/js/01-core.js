@@ -175,6 +175,7 @@ const state = {
   stream: null,
   busy: false,
   liveText: null,
+  liveTextFrame: null,
   liveReasoning: null,
   liveTodos: null,
   lastTurnOutputTokens: null,

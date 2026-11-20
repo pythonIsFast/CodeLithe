@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import re
+from codecs import getincrementaldecoder
 from dataclasses import dataclass
 from typing import Any, Iterable, Iterator
 
@@ -72,13 +73,15 @@ def _parse_event_block(block: str) -> ServerSentEvent:
 def iterate_server_sent_events(chunks: Iterable[bytes]) -> Iterator[ServerSentEvent]:
     """Turn a stream of raw byte chunks (e.g. from an HTTP response body) into events."""
     buffer = ""
+    decoder = getincrementaldecoder("utf-8")(errors="ignore")
     for chunk in chunks:
-        buffer += chunk.decode("utf-8", errors="ignore")
+        buffer += decoder.decode(chunk)
         blocks = _SSE_SEPARATOR.split(buffer)
         buffer = blocks.pop()
         for block in blocks:
             if block.strip():
                 yield _parse_event_block(block)
+    buffer += decoder.decode(b"", final=True)
     if buffer.strip():
         yield _parse_event_block(buffer)
 

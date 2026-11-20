@@ -117,6 +117,10 @@ class LocalExtensionHost:
     def tools(self) -> list[Tool]:
         return [item[0] for item in self._tools.values()]
 
+    @property
+    def has_hooks(self) -> bool:
+        return bool(self._hooks)
+
     def get(self, name: str) -> Tool | None:
         entry = self._tools.get(name)
         return entry[0] if entry else None

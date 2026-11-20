@@ -31,6 +31,8 @@ import json
 import logging
 import queue
 import threading
+from concurrent.futures import ThreadPoolExecutor
+from itertools import groupby
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
@@ -55,6 +57,9 @@ from .router import AUTO_MODEL, FALLBACK_MODEL, select_model
 logger = logging.getLogger(__name__)
 
 ASTRA_REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+PARALLEL_FILE_READS = frozenset({"read_file", "list_dir", "grep", "find_files"})
+EDIT_TOOLS = frozenset({"edit_file", "write_file"})
+MAX_READ_WORKERS = 4
 
 Publisher = Callable[[str, dict[str, Any]], None]
 
@@ -99,6 +104,8 @@ class AgentRunner:
             FALLBACK_MODEL if self._conversation.model == AUTO_MODEL else self._conversation.model
         )
         self._run_effort = self._conversation.reasoning_effort
+        self._run_capabilities: dict[str, dict[str, Any]] = {}
+        self._run_context_windows: dict[str, int] = {}
         self._project_context = ""
         self._local_extensions = LocalExtensionHost(
             Path(self._conversation.workspace), set(registry.names())
@@ -177,9 +184,8 @@ class AgentRunner:
             and not (is_go_model(self._conversation.model) or is_custom_model(self._conversation.model))
             else self._conversation.model
         )
-        # Whatever the user picked holds for the whole run. Auto may replace it
-        # below, because choosing the model without choosing how hard it thinks
-        # only decides half the question.
+        # This is the run's baseline effort. Auto can choose it, and successful
+        # edits can use a lighter continuation without changing the baseline.
         self._run_effort = self._conversation.reasoning_effort
         conversation_id = self._conversation.id
         user_item = {
@@ -227,9 +233,6 @@ class AgentRunner:
             self._config.data_dir,
             memory_chars=self._config.max_memory_chars,
             instruction_chars=self._config.max_instruction_chars,
-        )
-        self._local_extensions = LocalExtensionHost(
-            Path(self._conversation.workspace), set(registry.names())
         )
         context = ToolContext(
             workspace=Path(self._conversation.workspace),
@@ -296,6 +299,7 @@ class AgentRunner:
         over-long request, which surfaces through the normal error path.
         """
         step = 0
+        after_successful_edit = False
         # Direct image inputs from `view_image` stay in memory only until the
         # next turn consumes them. They must never be persisted or replayed.
         ephemeral_inputs: list[dict[str, Any]] = []
@@ -314,9 +318,12 @@ class AgentRunner:
                 self._publish("error", {"message": exhausted})
                 return
 
-            self._apply_pending_updates(items)
+            updated = self._apply_pending_updates(items)
             self._publish("step", {"step": step})
-            response = self._request_turn(items)
+            response = self._request_turn(
+                items, after_edit=after_successful_edit and not updated and compacted is None,
+            )
+            after_successful_edit = False
             if response is None:
                 self._publish(
                     "error",
@@ -360,7 +367,14 @@ class AgentRunner:
                 )
                 return
 
-            results = [self._execute_call(call, context) for call in calls]
+            outcomes = self._execute_calls(calls, context)
+            results = [result for result, _ in outcomes]
+            names = [str(call.get("name") or "") for call in calls]
+            after_successful_edit = (
+                any(name in EDIT_TOOLS for name in names)
+                and all(name in EDIT_TOOLS or name in PARALLEL_FILE_READS for name in names)
+                and all(ok for _, ok in outcomes)
+            )
             items.extend(results)
             self._store.append_items(self._conversation.id, results)
             direct_inputs = context.take_model_inputs()
@@ -380,11 +394,14 @@ class AgentRunner:
         lookup after the first call; the static table only covers the case
         where the catalog cannot be reached.
         """
-        try:
-            live = self._session.context_window(self._run_model)
-        except Exception:  # noqa: BLE001 - never fail a run over a display figure
-            live = None
-        return live or context_window_for(self._run_model)
+        model = self._run_model
+        if model not in self._run_context_windows:
+            try:
+                live = self._session.context_window(model)
+            except Exception:  # noqa: BLE001 - never fail a run over a display figure
+                live = None
+            self._run_context_windows[model] = live or context_window_for(model)
+        return self._run_context_windows[model]
 
     def _needs_compaction(self) -> bool:
         used = self._conversation.context_tokens
@@ -629,6 +646,12 @@ class AgentRunner:
 
     # -- model turn ------------------------------------------------------------
 
+    def _model_capabilities(self) -> dict[str, Any]:
+        model = self._run_model
+        if model not in self._run_capabilities:
+            self._run_capabilities[model] = self._session.model_capabilities(model)
+        return self._run_capabilities[model]
+
     def _supported_effort(self, effort: str) -> str:
         """Drop a level the run's model does not accept.
 
@@ -640,7 +663,7 @@ class AgentRunner:
         if not effort or is_custom_model(self._run_model):
             return ""
         try:
-            allowed = self._session.model_capabilities(self._run_model).get("efforts")
+            allowed = self._model_capabilities().get("efforts")
         except Exception:  # noqa: BLE001 - a catalog hiccup must not fail a run
             return "" if is_go_model(self._run_model) else effort
         if is_go_model(self._run_model):
@@ -659,7 +682,7 @@ class AgentRunner:
         if self._run_model == "gpt-6-astra" and self._session.config.is_eu_data_residency:
             return False
         try:
-            return bool(self._session.model_capabilities(self._run_model).get("fast"))
+            return bool(self._model_capabilities().get("fast"))
         except Exception:  # noqa: BLE001 - a catalog hiccup must not fail a run
             # Send it anyway: an unsupported tier is ignored, not an error.
             return True
@@ -681,7 +704,26 @@ class AgentRunner:
             return self._session.send_responses(body, stream=stream, session_id=self._conversation.id)
         return self._session.send_responses(body, stream=stream)
 
-    def _request_turn(self, items: list[dict[str, Any]]) -> dict[str, Any] | None:
+    def _edit_continuation_effort(self) -> str:
+        baseline = self._run_effort
+        if not self._config.lean_edit_continuations or baseline in ("none", "minimal", "low"):
+            return baseline
+        try:
+            capabilities = self._model_capabilities()
+        except Exception:  # noqa: BLE001 - don't guess an unsupported level
+            return baseline
+        if (baseline or capabilities.get("default_effort")) not in (
+            "medium", "high", "xhigh", "max", "ultra",
+        ):
+            return baseline
+        for effort in ("minimal", "low"):
+            if effort in (capabilities.get("efforts") or ()):
+                return effort
+        return baseline
+
+    def _request_turn(
+        self, items: list[dict[str, Any]], *, after_edit: bool = False,
+    ) -> dict[str, Any] | None:
         body = {
             "model": self._run_model,
             "instructions": system_prompt.build(
@@ -701,8 +743,9 @@ class AgentRunner:
         # Only sent when something actually chose a level. Omitting the key lets
         # the transport fill in the model's own catalog default, which is a
         # better answer than any level this app could invent.
-        if self._run_effort:
-            body["reasoning"] = {"effort": self._run_effort}
+        effort = self._edit_continuation_effort() if after_edit else self._run_effort
+        if effort:
+            body["reasoning"] = {"effort": effort}
         # Only for a model that offers the tier. The backend accepts
         # `priority` for any model -- gpt-5.4-mini has no fast tier and still
         # returns 200 -- so it cannot be relied on to reject a pointless
@@ -805,9 +848,32 @@ class AgentRunner:
 
     # -- tool execution ---------------------------------------------------------
 
+    def _execute_calls(
+        self, calls: list[dict[str, Any]], context: ToolContext,
+    ) -> list[tuple[dict[str, Any], bool]]:
+        if self._local_extensions.has_hooks:
+            # Hooks can mutate workspace state or ask for permission, even
+            # around a built-in read.
+            return [self._execute_call(call, context) for call in calls]
+
+        results = []
+        def is_file_read(call: dict[str, Any]) -> bool:
+            return str(call.get("name") or "") in PARALLEL_FILE_READS
+
+        for read_only, group in groupby(calls, key=is_file_read):
+            batch = list(group)
+            if read_only and len(batch) > 1:
+                with ThreadPoolExecutor(max_workers=min(MAX_READ_WORKERS, len(batch))) as pool:
+                    # Events complete independently, but the model's history
+                    # keeps the original call order.
+                    results.extend(pool.map(lambda call: self._execute_call(call, context), batch))
+            else:
+                results.extend(self._execute_call(call, context) for call in batch)
+        return results
+
     def _execute_call(
         self, call: dict[str, Any], context: ToolContext
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], bool]:
         call_id = call.get("call_id") or call.get("id") or ""
         name = str(call.get("name") or "")
         raw_arguments = call.get("arguments") or "{}"
@@ -817,7 +883,7 @@ class AgentRunner:
         self._publish(
             "tool_finished", {"call_id": call_id, "name": name, "output": output, "ok": ok}
         )
-        return {"type": "function_call_output", "call_id": call_id, "output": output}
+        return {"type": "function_call_output", "call_id": call_id, "output": output}, ok
 
     def _invoke(
         self, name: str, raw_arguments: str, context: ToolContext

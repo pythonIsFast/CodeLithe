@@ -184,8 +184,11 @@ class CodexTransport:
 
     def _iter_body(self, response, chunk_size: int = 4096) -> Iterator[bytes]:
         try:
+            # read(n) may wait to fill n bytes across multiple SSE events.
+            # read1(n) returns as soon as one socket read has data.
+            read = getattr(response, "read1", response.read)
             while True:
-                chunk = response.read(chunk_size)
+                chunk = read(chunk_size)
                 if not chunk:
                     break
                 yield chunk
