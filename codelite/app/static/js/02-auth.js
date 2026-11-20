@@ -1,4 +1,4 @@
-/* Part of the Code Lite UI. Loaded as a classic script in numeric order
+/* Part of the CodeLithe UI. Loaded as a classic script in numeric order
  * from index.html; the files share one global scope on purpose, because
  * the interface deliberately has no build step. */
 
@@ -13,7 +13,7 @@ function renderAuth(auth) {
     ? "Anonymous requests are limited to one every 15 seconds."
     : (auth.authenticated
       ? (auth.email && auth.email !== label ? auth.email : "Connected with ChatGPT")
-      : "Connect your ChatGPT subscription to use Code Lite.");
+      : "Connect your ChatGPT subscription to use CodeLithe.");
   el.authOverlay.hidden = Boolean(ready || auth.opencode_go);
 
   const waiting = auth.login_status === "waiting";

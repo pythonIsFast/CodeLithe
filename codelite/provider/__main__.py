@@ -15,7 +15,7 @@
 """CLI entry point: ``python -m codelite.provider``.
 
 Starts the local OpenAI-compatible proxy in the foreground. It uses the OAuth
-tokens in Code Lite's own data directory, or an explicit ``--auth-file``.
+tokens in CodeLithe's own data directory, or an explicit ``--auth-file``.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--auth-file",
         type=Path,
         default=None,
-        help="Path to auth.json (default: Code Lite data directory)",
+        help="Path to auth.json (default: CodeLithe data directory)",
     )
     parser.add_argument("--codex-version", default=None, help="Override the Codex client version used for model discovery.")
     parser.add_argument("--instructions", default="", help="Default system instructions sent with every /responses request.")

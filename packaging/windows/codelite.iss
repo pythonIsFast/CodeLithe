@@ -1,4 +1,4 @@
-; Inno Setup script for the Code Lite Windows installer.
+; Inno Setup script for the CodeLithe Windows installer.
 ;
 ; Built by .github/workflows/release.yml, which passes the version in:
 ;   ISCC /DAppVersion=1.2.3 packaging\windows\codelite.iss
@@ -10,10 +10,10 @@
   #define AppVersion "0.0.0"
 #endif
 
-#define AppName "Code Lite"
+#define AppName "CodeLithe"
 #define AppExeName "CodeLite.exe"
-#define AppPublisher "Code Lite contributors"
-#define AppUrl "https://github.com/pythonIsFast/CodeLite"
+#define AppPublisher "CodeLithe contributors"
+#define AppUrl "https://github.com/pythonIsFast/CodeLithe"
 
 [Setup]
 ; A stable GUID is what lets a later version upgrade this install in place

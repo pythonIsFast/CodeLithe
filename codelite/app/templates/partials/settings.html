@@ -26,9 +26,9 @@
           ('memory', 'Global memory', 'Set instructions shared across every workspace.'),
           ('project', 'Current project', 'Edit project memory and configure MCP and language servers.')]),
         ('app', 'Application', [
-          ('remote', 'Remote Control', 'Access Code Lite from another device.'),
+          ('remote', 'Remote Control', 'Access CodeLithe from another device.'),
           ('import', 'Import conversations', 'Bring in your conversation history from Codex.'),
-          ('updates', 'Updates', 'Check for a newer version of Code Lite.')])
+          ('updates', 'Updates', 'Check for a newer version of CodeLithe.')])
       ] %}
       <nav class="settings-categories" aria-label="Settings categories">
         {% for key, label, items in sections %}
@@ -131,10 +131,10 @@
             <div class="settings-row">
               <div class="settings-row-text">
                 <div class="settings-row-title">Remote Control</div>
-                <p class="account-detail">Access this Code Lite instance from another device. The agent and all tools continue running on this computer.</p>
+                <p class="account-detail">Access this CodeLithe instance from another device. The agent and all tools continue running on this computer.</p>
                 <div id="remote-unsupported" hidden>Remote Control is currently available on Windows and Linux.</div>
                 <div id="remote-download-hint" hidden>
-                  <p class="account-detail">cloudflared is downloaded only when you request it and stored in the Code Lite data directory.</p>
+                  <p class="account-detail">cloudflared is downloaded only when you request it and stored in the CodeLithe data directory.</p>
                 </div>
                 <p class="auth-status" id="remote-status"></p>
               </div>
@@ -150,7 +150,7 @@
             </div>
             <div class="settings-row" id="remote-active" hidden>
               <div class="settings-row-text">
-                <div class="settings-row-title">Anyone with this URL and password can control Code Lite</div>
+                <div class="settings-row-title">Anyone with this URL and password can control CodeLithe</div>
                 <label class="field-label" for="remote-url">Public URL</label>
                 <div class="remote-value-row"><input id="remote-url" readonly /><button type="button" class="btn" id="remote-copy-url">Copy</button></div>
                 <label class="field-label" for="remote-password">Password</label>
@@ -220,7 +220,7 @@
           <section class="settings-panel" data-settings-panel="updates" hidden>
             <div class="settings-row" id="settings-update" hidden>
               <div class="settings-row-text">
-                <div class="settings-row-title">Code Lite update</div>
+                <div class="settings-row-title">CodeLithe update</div>
                 <p class="account-detail" id="update-status"></p>
               </div>
               <div class="settings-row-control">

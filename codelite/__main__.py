@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""``python3 -m codelite`` -- launch the Code Lite desktop app.
+"""``python3 -m codelite`` -- launch the CodeLithe desktop app.
 
 ``python3 -m codelite.provider`` remains the way to run just the raw
 OpenAI-compatible proxy, without the agent or the window.
@@ -33,7 +33,7 @@ from .permission.modes import Mode
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python3 -m codelite",
-        description="Code Lite -- a lightweight coding agent on your ChatGPT subscription.",
+        description="CodeLithe -- a lightweight coding agent on your ChatGPT subscription.",
     )
     parser.add_argument("--host", default=DEFAULT_HOST, help=f"Bind host (default: {DEFAULT_HOST})")
     parser.add_argument(

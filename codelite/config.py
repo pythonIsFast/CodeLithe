@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""App-wide configuration for the Code Lite agent.
+"""App-wide configuration for the CodeLithe agent.
 
 Deliberately separate from :mod:`codelite.provider.config`, which stays
 concerned only with OAuth/Codex endpoints. This module holds what the *app*
@@ -35,7 +35,7 @@ DEFAULT_JUDGE_MODEL = "gpt-5.6-luna"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 10532
 
-WINDOW_TITLE = "Code Lite"
+WINDOW_TITLE = "CodeLithe"
 WINDOW_WIDTH = 1180
 WINDOW_HEIGHT = 800
 WINDOW_MIN_WIDTH = 720
@@ -61,7 +61,7 @@ CONTEXT_STOP_FRACTION = 0.95
 DEFAULT_CONTEXT_WINDOW = 272_000
 CONTEXT_WINDOWS: dict[str, int] = {
     # Astra accepts 1.05M total tokens; 128k are reserved for output, leaving
-    # the 922k effective input budget used by Code Lite's compaction meter.
+    # the 922k effective input budget used by CodeLithe's compaction meter.
     "gpt-6-astra": 922_000,
     "gpt-5.6-sol": 1_050_000,
     "gpt-5.6-terra": 272_000,
@@ -127,7 +127,7 @@ def context_window_for(model: str) -> int:
 
 
 def default_data_dir() -> Path:
-    """Resolve the app's data directory, honoring Code Lite/XDG overrides."""
+    """Resolve the app's data directory, honoring CodeLithe/XDG overrides."""
     codelite_home = os.environ.get("CODELITE_HOME")
     if codelite_home:
         return Path(codelite_home)

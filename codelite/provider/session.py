@@ -113,7 +113,7 @@ class Session:
         the catalog's ``context_window``, which Codex tunes down for its own
         cost/performance defaults (e.g. GPT-5.6 Sol reports a 1.05M capability
         but a 272k default). Community reports on the stock Codex CLI confirm
-        the model accepts and performs fine with the larger figure; Code Lite
+        the model accepts and performs fine with the larger figure; CodeLithe
         always requests it rather than leaving it behind an opt-in, the way
         Codex CLI's own ``model_context_window`` override does.
 

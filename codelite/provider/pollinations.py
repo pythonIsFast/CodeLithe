@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Anonymous Pollinations chat transport behind Code Lite's Responses interface."""
+"""Anonymous Pollinations chat transport behind CodeLithe's Responses interface."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from typing import Any, Callable, Iterator
 POLLINATIONS_URL = "https://text.pollinations.ai/openai"
 POLLINATIONS_MODEL = "openai-fast"
 POLLINATIONS_REQUEST_INTERVAL_SECONDS = 15.0
-USER_AGENT = "CodeLite/0.1 (+https://github.com/)"
+USER_AGENT = "CodeLithe/0.1 (+https://github.com/)"
 
 
 class PollinationsError(RuntimeError):

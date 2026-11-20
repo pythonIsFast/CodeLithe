@@ -102,7 +102,7 @@ def _unpack_zipapp_assets() -> Path:
     archive = next((parent for parent in module.parents if parent.is_file()), None)
     if archive is None or not zipfile.is_zipfile(archive):
         raise RuntimeError(
-            "Code Lite could not locate its interface files. This build looks "
+            "CodeLithe could not locate its interface files. This build looks "
             "incomplete -- please reinstall it."
         )
     target = Path(tempfile.mkdtemp(prefix="codelite-assets-"))
@@ -314,7 +314,7 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
         go = rt().session.opencode_go
         if request.method == "PUT":
             if remote_manager().is_remote_host(request.host):
-                return jsonify({"error": "Change API keys in the local Code Lite window."}), 403
+                return jsonify({"error": "Change API keys in the local CodeLithe window."}), 403
             try:
                 go.save(_body())
             except ValueError as error:
@@ -721,7 +721,7 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
 
     @app.post("/api/conversations/<conversation_id>/uploads")
     def upload_file(conversation_id: str):
-        """Accept a user-selected file in Code Lite's central data directory."""
+        """Accept a user-selected file in CodeLithe's central data directory."""
         conversation, error = _conversation_or_404(conversation_id)
         if error:
             return error

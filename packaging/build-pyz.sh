@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Build the Code Lite zipapp: one executable file, run by the system Python.
+# Build the CodeLithe zipapp: one executable file, run by the system Python.
 #
 # Usage: packaging/build-pyz.sh <output-path>
 #
-# Everything Code Lite needs on Linux is pure Python (Flask, pywebview and
+# Everything CodeLithe needs on Linux is pure Python (Flask, pywebview and
 # their dependencies), so the app can be bundled without freezing an
 # interpreter. The native window still comes from the system's WebKitGTK via
 # the distribution's own PyGObject -- which a frozen build could not use,

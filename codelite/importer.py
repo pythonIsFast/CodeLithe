@@ -26,14 +26,14 @@ with five envelope types: ``session_meta`` (once, first), ``turn_context``,
 
 Why the transcript is rebuilt as plain messages
 -----------------------------------------------
-Code Lite keeps one item list per conversation and sends it straight back to
+CodeLithe keeps one item list per conversation and sends it straight back to
 the model, so anything imported has to remain a *valid request*. Codex's items
 are not:
 
 * ``reasoning`` items carry ``encrypted_content`` bound to the response chain
   they came from. Replaying them in a new chat is not something the API
   accepts, so they are dropped rather than imported and later rejected.
-* Tool calls reference Codex's own tools (``exec``, ``wait``), which Code Lite
+* Tool calls reference Codex's own tools (``exec``, ``wait``), which CodeLithe
   does not declare. A ``function_call`` naming a tool that is not in the
   request is an error, not a display quirk.
 
@@ -79,7 +79,7 @@ def default_codex_home() -> Path:
 
 @dataclass
 class ParsedRollout:
-    """One Codex session, already reduced to what Code Lite can store."""
+    """One Codex session, already reduced to what CodeLithe can store."""
 
     source_id: str
     path: Path

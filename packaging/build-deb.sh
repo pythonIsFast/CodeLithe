@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the Code Lite Debian package around the zipapp.
+# Build the CodeLithe Debian package around the zipapp.
 #
 # Usage: packaging/build-deb.sh <version> <pyz-path> <output-dir>
 #
@@ -44,9 +44,9 @@ Priority: optional
 Architecture: all
 Maintainer: pythonIsFast <pythonIsFast@users.noreply.github.com>
 Depends: python3 (>= 3.10), python3-gi, python3-gi-cairo, gir1.2-gtk-3.0, gir1.2-webkit2-4.1 | gir1.2-webkit2-4.0
-Homepage: https://github.com/pythonIsFast/CodeLite
+Homepage: https://github.com/pythonIsFast/CodeLithe
 Description: Lightweight coding agent for your ChatGPT subscription
- Code Lite is a small coding agent that opens in a native window and works on
+ CodeLithe is a small coding agent that opens in a native window and works on
  your files and shell through a permission system you control. It runs on an
  existing ChatGPT subscription rather than API credits.
  .

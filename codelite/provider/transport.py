@@ -417,7 +417,7 @@ class CodexTransport:
     # Plus/Pro accounts occasionally get a free "reset credit" that clears
     # the weekly rate-limit window early, meant for "I'm mid-task and about
     # to hit the cap" -- not something to spend automatically, since each
-    # account only gets a few and they otherwise expire unused. Code Lite
+    # account only gets a few and they otherwise expire unused. CodeLithe
     # only ever lists and redeems on an explicit user click.
 
     def list_reset_credits(self) -> list[dict[str, Any]]:

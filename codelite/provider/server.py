@@ -70,7 +70,7 @@ def _uses_server_replay_state(body: dict[str, Any]) -> bool:
 
 def make_handler(session: Session) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
-        server_version = "CodeLiteProvider/0.1"
+        server_version = "CodeLitheProvider/0.1"
 
         def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
             logger.info("%s - %s", self.address_string(), format % args)
@@ -224,7 +224,7 @@ def run_server(
     session = Session(config)
     handler_class = make_handler(session)
     httpd = ThreadingHTTPServer((host, port), handler_class)
-    logger.info("Code Lite provider proxy listening on http://%s:%d/v1", host, port)
+    logger.info("CodeLithe provider proxy listening on http://%s:%d/v1", host, port)
     try:
         httpd.serve_forever()
     finally:

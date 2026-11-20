@@ -165,7 +165,7 @@ def select_model(
             ModelDecision(
                 model=fallback,
                 reason=(
-                    "Auto could not make a routing decision, so Code Lite chose "
+                    "Auto could not make a routing decision, so CodeLithe chose "
                     f"{fallback} as the configured fallback."
                 ),
                 effort="medium",

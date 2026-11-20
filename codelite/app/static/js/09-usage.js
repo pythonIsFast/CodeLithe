@@ -1,4 +1,4 @@
-/* Part of the Code Lite UI. Loaded as a classic script in numeric order
+/* Part of the CodeLithe UI. Loaded as a classic script in numeric order
  * from index.html; the files share one global scope on purpose, because
  * the interface deliberately has no build step. */
 

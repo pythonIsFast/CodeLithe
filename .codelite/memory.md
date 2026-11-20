@@ -1,4 +1,4 @@
-# Code Lite project memory
+# CodeLithe project memory
 
 - Optimize for fast startup, low idle overhead, and responsive local execution.
 - Keep model context and ChatGPT usage small; prefer bounded context, lazy discovery, and concise tool results.

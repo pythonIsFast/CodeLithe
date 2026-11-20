@@ -1,4 +1,4 @@
-Code Lite
+CodeLithe
 Copyright 2026 Code Lite contributors
 
 This product is licensed under the Apache License, Version 2.0.
@@ -13,4 +13,4 @@ transport, and the Chat Completions / Responses translation logic in
   Licensed under the Apache License, Version 2.0.
 
 The code has been rewritten from TypeScript to pure-stdlib Python and
-restructured into Code Lite's own module layout; it is not a verbatim copy.
+restructured into CodeLithe's own module layout; it is not a verbatim copy.

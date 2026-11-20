@@ -2,7 +2,7 @@
   Copyright 2026 Code Lite contributors
   Licensed under the Apache License, Version 2.0.
 
-  The Code Lite mark: a prompt chevron over a caret line, on the app's teal.
+  The CodeLithe mark: a prompt chevron over a caret line, on the app's teal.
   Hand-drawn geometry rather than a generated bitmap, so it stays a couple of
   KB and rasterises crisply at any size. The teal matches --accent in
   static/css/01-base.css; keep the two in sync.

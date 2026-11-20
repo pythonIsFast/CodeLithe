@@ -114,7 +114,7 @@ class RemoteManager:
         asset_name = _asset_name()
         request = urllib.request.Request(
             CLOUDFLARED_RELEASE_API,
-            headers={"Accept": "application/vnd.github+json", "User-Agent": "CodeLite-Remote"},
+            headers={"Accept": "application/vnd.github+json", "User-Agent": "CodeLithe-Remote"},
         )
         try:
             with urllib.request.urlopen(request, timeout=20) as response:
@@ -139,7 +139,7 @@ class RemoteManager:
         self.binary.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.binary.with_suffix(self.binary.suffix + ".download")
         download = urllib.request.Request(
-            str(asset["browser_download_url"]), headers={"User-Agent": "CodeLite-Remote"}
+            str(asset["browser_download_url"]), headers={"User-Agent": "CodeLithe-Remote"}
         )
         actual = hashlib.sha256()
         try:

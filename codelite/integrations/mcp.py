@@ -81,7 +81,7 @@ class McpClient:
             {
                 "protocolVersion": MCP_PROTOCOL_VERSION,
                 "capabilities": {"roots": {"listChanged": False}},
-                "clientInfo": {"name": "Code Lite", "version": "0.1"},
+                "clientInfo": {"name": "CodeLithe", "version": "0.1"},
             },
         )
         self.notify("notifications/initialized", {})

@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/icon.png" width="96" alt="Code Lite logo" />
+  <img src="assets/icon.png" width="96" alt="CodeLithe logo" />
 </p>
 
-<h1 align="center">Code Lite</h1>
+<h1 align="center">CodeLithe</h1>
 
 <p align="center">
   <strong>A fast, lightweight coding agent for your local projects.</strong><br />
@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/pythonIsFast/CodeLite/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-e17755.svg?style=flat-square" alt="Apache 2.0 license" /></a>
+  <a href="https://github.com/pythonIsFast/CodeLithe/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-e17755.svg?style=flat-square" alt="Apache 2.0 license" /></a>
   <img src="https://img.shields.io/badge/runtime-Python-3776ab.svg?style=flat-square" alt="Python runtime" />
   <img src="https://img.shields.io/badge/UI-native%20webview-2f855a.svg?style=flat-square" alt="Native webview UI" />
   <img src="https://img.shields.io/badge/dependencies-small%20by%20design-805ad5.svg?style=flat-square" alt="Small dependency footprint" />
@@ -23,16 +23,16 @@
 ---
 
 > [!IMPORTANT]
-> Code Lite uses your existing **ChatGPT sign-in**, not an API key or API credits. It keeps its own OAuth session and never reads or overwrites Codex CLI authentication.
+> CodeLithe uses your existing **ChatGPT sign-in**, not an API key or API credits. It keeps its own OAuth session and never reads or overwrites Codex CLI authentication.
 
-## Why Code Lite?
+## Why CodeLithe?
 
-Most coding agents are either heavy desktop applications or thin terminal wrappers. Code Lite aims for a different balance: a capable local agent with a compact Python runtime, no Electron bundle, and an interface that stays out of the way.
+Most coding agents are either heavy desktop applications or thin terminal wrappers. CodeLithe aims for a different balance: a capable local agent with a compact Python runtime, no Electron bundle, and an interface that stays out of the way.
 
-| | Code Lite |
+| | CodeLithe |
 |---|---|
 | **Desktop app** | Native OS webview via pywebview — no bundled Chromium |
-| **Account** | Sign in with ChatGPT; tokens are stored separately in Code Lite's data directory |
+| **Account** | Sign in with ChatGPT; tokens are stored separately in CodeLithe's data directory |
 | **Agent loop** | Streaming model → tool → result → model workflow with automatic context compaction |
 | **Safety** | Per-action approvals, scoped session grants, and an optional command judge |
 | **Project context** | Instructions, memory, skills, MCP, and LSP — all lazy and bounded |
@@ -40,7 +40,7 @@ Most coding agents are either heavy desktop applications or thin terminal wrappe
 
 ## Download
 
-Every [release](https://github.com/pythonIsFast/CodeLite/releases/latest) ships four ready-to-run builds, all built from the same source in CI:
+Every [release](https://github.com/pythonIsFast/CodeLithe/releases/latest) ships four ready-to-run builds, all built from the same source in CI:
 
 | Platform | File | Notes |
 |---|---|---|
@@ -48,6 +48,9 @@ Every [release](https://github.com/pythonIsFast/CodeLite/releases/latest) ships 
 | Windows | `CodeLite-<version>-windows-portable.exe` | Single file, nothing to install |
 | Debian / Ubuntu | `code-lite_<version>_all.deb` | `sudo apt install ./code-lite_<version>_all.deb` |
 | Linux | `code-lite-<version>.pyz` | Single file, run with `python3 code-lite-<version>.pyz` |
+
+Existing installations can upgrade in place. Installer filenames and the
+`code-lite` launcher keep their existing names for compatibility.
 
 The Linux builds use your system's own Python and WebKitGTK rather than bundling a browser, which is what keeps them a few megabytes instead of a few hundred. If the window doesn't open on a fresh install:
 
@@ -64,8 +67,8 @@ Prefer to run from source, or want to change the code? Keep reading.
 ### 1. Install
 
 ```bash
-git clone https://github.com/pythonIsFast/CodeLite.git
-cd CodeLite
+git clone https://github.com/pythonIsFast/CodeLithe.git
+cd CodeLithe
 pip install -r requirements.txt
 ```
 
@@ -75,7 +78,7 @@ pip install -r requirements.txt
 python3 run.py
 ```
 
-On first launch, select **Sign in with ChatGPT**. The browser completes OAuth and Code Lite stores its own session at `~/.local/share/codelite/auth.json` by default.
+On first launch, select **Sign in with ChatGPT**. The browser completes OAuth and CodeLithe stores its own session at `~/.local/share/codelite/auth.json` by default.
 
 <details>
 <summary><strong>Useful launch modes</strong></summary>
@@ -101,7 +104,7 @@ python3 -m codelite.provider
 ```
 
 `--screenshot` is a quick way to see what the interface actually renders
-without leaving a window open: it starts Code Lite normally, waits until the
+without leaving a window open: it starts CodeLithe normally, waits until the
 front end reports that startup finished (plus the optional delay), writes a
 PNG of the web content, and closes the app again. Without a path it saves to
 `screenshot.png` in the current directory; passing a directory saves
@@ -161,22 +164,22 @@ interpreter.
 
 ### Remote Control
 
-From **Settings → Remote Control**, Code Lite can expose its existing web UI
+From **Settings → Remote Control**, CodeLithe can expose its existing web UI
 through a password-protected Cloudflare Quick Tunnel. The agent, filesystem,
 tools, and permission checks keep running on the local computer; another device
-only receives the UI. Code Lite generates a new high-entropy password for every
+only receives the UI. CodeLithe generates a new high-entropy password for every
 tunnel and invalidates all remote sessions when the tunnel stops.
 
 Remote Control is optional on Windows and Linux. It does not increase the normal
 installation size: `cloudflared` is downloaded only after pressing **Download
 cloudflared**, verified against the SHA-256 digest published with Cloudflare's
-latest release, and stored under Code Lite's data directory. Anyone with the URL
+latest release, and stored under CodeLithe's data directory. Anyone with the URL
 and password has the same control as the local UI, including answering permission
 prompts, so share them only with a trusted device.
 
 ### Let Auto choose the right model
 
-Choose **Auto** in the model picker and Code Lite uses a lightweight routing step before every turn. Routine work stays economical; larger refactors, debugging, and higher-risk changes can receive a more capable model. The selected model (Luna, Terra, or Sol) and reason remain visible in chat, and routing falls back to the balanced option instead of defaulting to the most expensive model.
+Choose **Auto** in the model picker and CodeLithe uses a lightweight routing step before every turn. Routine work stays economical; larger refactors, debugging, and higher-risk changes can receive a more capable model. The selected model (Luna, Terra, or Sol) and reason remain visible in chat, and routing falls back to the balanced option instead of defaulting to the most expensive model.
 
 ### Reasoning effort and Fast
 
@@ -211,7 +214,7 @@ Reads are always safe. File changes and terminal commands follow the permission 
 | `auto` | Allow | A separate safety check reviews each command, then escalates if needed |
 | `bypass` | Allow | Allow |
 
-When Code Lite asks, you can approve once, approve a narrow scope for this chat, or deny with feedback. Write approvals include the actual unified diff. Shell grants are restricted to the exact normalized command and working directory; write grants are restricted to the displayed directory.
+When CodeLithe asks, you can approve once, approve a narrow scope for this chat, or deny with feedback. Write approvals include the actual unified diff. Shell grants are restricted to the exact normalized command and working directory; write grants are restricted to the displayed directory.
 
 > [!TIP]
 > `auto` does not silently ignore a blocked command. It shows why the safety check rejected it and lets you make the final decision.
@@ -233,18 +236,18 @@ if you prefer to see each step.
 Be aware of what the review is and is not. It is a model reading a command,
 which makes it a strong filter but a filter, not a boundary: a sufficiently
 indirect command can get past it, and there is no operating-system sandbox
-underneath. Code Lite does not currently confine commands with Landlock,
+underneath. CodeLithe does not currently confine commands with Landlock,
 seccomp, or a container — an approved command runs with your full user rights.
 If that matters for your work, `ask` is the mode that gives you a hard gate,
 and `bypass` means exactly what its name says.
 
 ## Project intelligence, without the bloat
 
-Code Lite loads useful project context only when it is needed and keeps every injected source bounded.
+CodeLithe loads useful project context only when it is needed and keeps every injected source bounded.
 
 | Source | Location | Behaviour |
 |---|---|---|
-| **Global memory** | Code Lite data directory: `memory.md` | Personal preferences that apply to every project |
+| **Global memory** | CodeLithe data directory: `memory.md` | Personal preferences that apply to every project |
 | **Project memory** | `.codelite/memory.md` | Commands, conventions, and architecture shared by the workspace |
 | **Repository instructions** | `AGENTS.md`, `CLAUDE.md` | Collected before a run; nested applicable instructions are included |
 | **Skills** | `.codelite/skills/` | Only summaries enter the prompt; full guidance loads on demand |
@@ -327,7 +330,7 @@ Plugins can expose `before_tool` and `after_tool` hooks. They may replace argume
 
 ```mermaid
 flowchart LR
-    U[You] --> UI[Native Code Lite window]
+    U[You] --> UI[Native CodeLithe window]
     UI <--> R[Local Flask runtime]
     R <--> A[Streaming agent loop]
     A <--> P[ChatGPT OAuth provider]
@@ -351,7 +354,7 @@ The provider layer is a from-scratch Python implementation inspired by [EvanZhou
 
 - The app binds to localhost only; it is a private desktop backend, not a network service.
 - There is no operating-system sandbox. Permission modes are the gate, and an approved command runs with your full user rights. `auto` is a good default and `ask` is the strict one, but neither is a kernel boundary — see [Which mode should you use?](#which-mode-should-you-use).
-- Shell calls are separate processes. Code Lite carries the working directory between calls, not environment mutations, functions, or background jobs.
+- Shell calls are separate processes. CodeLithe carries the working directory between calls, not environment mutations, functions, or background jobs.
 - Web tools reject private, local, reserved, and credential-bearing destinations. Downloads and returned text are capped.
 - Context usage is tracked per conversation. Before the model reaches its input limit, older working context is compacted while the original transcript remains stored and visible.
 - pywebview needs a system webview backend: WebKitGTK on Linux or WebView2 on Windows.

@@ -27,8 +27,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-RELEASE_API = "https://api.github.com/repos/pythonIsFast/CodeLite/releases/latest"
-USER_AGENT = "CodeLite-Updater"
+RELEASE_API = "https://api.github.com/repos/pythonIsFast/CodeLithe/releases/latest"
+USER_AGENT = "CodeLithe-Updater"
 _WINDOWS_UNINSTALL_KEY = (
     "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"
     "{7C4F1E62-9A3B-4D18-B5C6-1F2E8A9D3B47}_is1"
@@ -205,7 +205,7 @@ def install_update() -> dict[str, str]:
     release = _release()
     latest = str(release.get("tag_name") or "").lstrip("v")
     if _version_tuple(latest) <= _version_tuple(current):
-        raise UpdateError("Code Lite is already up to date.")
+        raise UpdateError("CodeLithe is already up to date.")
 
     expected = (
         f"code-lite_{latest}_all.deb"

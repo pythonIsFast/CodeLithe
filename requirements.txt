@@ -1,4 +1,4 @@
-# Dependencies for the Code Lite desktop app (codelite.agent / codelite.app).
+# Dependencies for the CodeLithe desktop app (codelite.agent / codelite.app).
 #
 # The provider layer (codelite.provider) deliberately needs NONE of these --
 # it runs on the Python standard library alone, so `python3 -m codelite.provider`

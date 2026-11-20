@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Code Lite: a lightweight, from-scratch coding agent.
+"""CodeLithe: a lightweight, from-scratch coding agent.
 
 This package currently contains the provider layer (`codelite.provider`),
 the first build stage. Later stages will add an agent loop, tool use, and

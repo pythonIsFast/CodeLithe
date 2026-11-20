@@ -18,7 +18,7 @@
 # packages/openai-oauth/src/{chat-completions,chat-messages,chat-stream}.ts,
 # Apache-2.0. The reference implementation delegates the actual translation
 # to the Vercel AI SDK (`ai` / `@ai-sdk/openai`), a third-party npm
-# dependency; since Code Lite is stdlib-only, this module reimplements that
+# dependency; since CodeLithe is stdlib-only, this module reimplements that
 # translation directly against the public OpenAI Responses API request/event
 # shapes instead of porting the AI SDK's internals.
 #
@@ -33,7 +33,7 @@
 
 """Translates between the OpenAI Chat Completions shape and the Responses API.
 
-Code Lite talks to Codex exclusively through `/responses` (see
+CodeLithe talks to Codex exclusively through `/responses` (see
 :mod:`codelite.provider.transport`). This module lets `/v1/chat/completions`
 keep working for OpenAI-client tooling that doesn't speak Responses natively,
 by converting requests in and responses (or SSE streams) back out.

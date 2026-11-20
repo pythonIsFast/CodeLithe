@@ -127,7 +127,7 @@ class LocalExtensionHost:
     def _authorize(self, definition: _Definition, context: ToolContext) -> None:
         relative = definition.path.relative_to(self.workspace).as_posix()
         context.permissions.require_shell(
-            f"load Code Lite extension {relative}",
+            f"load CodeLithe extension {relative}",
             context.task_prompt,
             context.relative(context.cwd or self.workspace) or ".",
         )

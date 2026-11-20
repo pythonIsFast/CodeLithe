@@ -5,7 +5,7 @@ welches Wissen nicht im Code steckt. Vor größeren Änderungen lesen.
 
 ## Projekt in Kürze
 
-**Code Lite** – ein kleiner Coding-Agent mit eigenem UI. Python + pywebview,
+**CodeLithe** – ein kleiner Coding-Agent mit eigenem UI. Python + pywebview,
 Anmeldung über das ChatGPT-Konto (kein API-Key), lokale Flask-Backend-Threads,
 natives OS-Webview als Fenster (kein Electron). Apache-2.0, UI-Texte Englisch.
 

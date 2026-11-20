@@ -32,7 +32,7 @@ from .context import ToolContext
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 DEFAULT_TEXT_CHARS = 12_000
 MAX_TEXT_CHARS = 30_000
-USER_AGENT = "CodeLite/1.0 (+local coding agent)"
+USER_AGENT = "CodeLithe/1.0 (+local coding agent)"
 
 
 def _public_addresses(url: str) -> tuple[str, ...]:

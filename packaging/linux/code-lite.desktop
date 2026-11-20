@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Code Lite
+Name=CodeLithe
 GenericName=Coding Agent
 Comment=A lightweight coding agent that runs on your ChatGPT subscription
 Exec=code-lite

@@ -1,4 +1,4 @@
-/* Part of the Code Lite UI. Loaded as a classic script in numeric order
+/* Part of the CodeLithe UI. Loaded as a classic script in numeric order
  * from index.html; the files share one global scope on purpose, because
  * the interface deliberately has no build step. */
 
@@ -166,7 +166,7 @@ async function checkForUpdate() {
       el.sidebarUpdate.textContent = `Update ${update.latest_version} available`;
     }
     if (!update.available) {
-      el.updateStatus.textContent = `Code Lite ${update.current_version} is up to date.`;
+      el.updateStatus.textContent = `CodeLithe ${update.current_version} is up to date.`;
       el.updateButton.textContent = "Check again";
     } else if (!update.asset_available) {
       el.updateStatus.textContent = `Version ${update.latest_version} is available, but its installer is missing.`;
@@ -195,7 +195,7 @@ async function runUpdate() {
   el.updateStatus.textContent = "Downloading and verifying the update…";
   try {
     const result = await post("/api/update");
-    el.updateStatus.textContent = `Preparing Code Lite ${result.version} for installation…`;
+    el.updateStatus.textContent = `Preparing CodeLithe ${result.version} for installation…`;
     el.updateButton.textContent = "Restarting for update";
     if (window.pywebview?.api?.quit_for_update) {
       await window.pywebview.api.quit_for_update();

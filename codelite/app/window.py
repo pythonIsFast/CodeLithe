@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Opens Code Lite in a native window.
+"""Opens CodeLithe in a native window.
 
 The window is drawn by the operating system's own webview (WebKitGTK on
 Linux, WebView2 on Windows, WKWebView on macOS) via ``pywebview`` -- nothing
@@ -107,12 +107,12 @@ def _wait_for_port(
     while time.monotonic() < deadline:
         if server_error:
             raise RuntimeError(
-                f"The Code Lite server could not start on {host}:{port}: "
+                f"The CodeLithe server could not start on {host}:{port}: "
                 f"{server_error[0]}"
             ) from server_error[0]
         if not thread.is_alive():
             raise RuntimeError(
-                f"The Code Lite server on {host}:{port} exited unexpectedly during startup."
+                f"The CodeLithe server on {host}:{port} exited unexpectedly during startup."
             )
         with socket.socket() as probe:
             probe.settimeout(0.4)
@@ -120,7 +120,7 @@ def _wait_for_port(
                 return
         time.sleep(0.1)
     raise RuntimeError(
-        f"The Code Lite server did not start on {host}:{port} within "
+        f"The CodeLithe server did not start on {host}:{port} within "
         f"{STARTUP_TIMEOUT_SECONDS:.0f}s."
     )
 
@@ -335,12 +335,12 @@ def run(
     try:
         serve_in_background(config)
     except Exception as error:  # noqa: BLE001 - anything from Flask/create_app startup, not just the port-wait timeout
-        logger.error("The Code Lite server could not start", exc_info=True)
+        logger.error("The CodeLithe server could not start", exc_info=True)
         show_startup_error(str(error))
         return 1
 
     if headless:
-        logger.info("Code Lite is serving on %s (no window requested)", config.base_url)
+        logger.info("CodeLithe is serving on %s (no window requested)", config.base_url)
         _block_forever()
         return 0
 
@@ -353,11 +353,11 @@ def run(
         # no traceback, no dialog, just gone. Catching that is not possible,
         # so the only real fix is to never attempt it and say so instead.
         show_startup_error(
-            "Code Lite needs the Microsoft Edge WebView2 Runtime to open its "
+            "CodeLithe needs the Microsoft Edge WebView2 Runtime to open its "
             "window, and it is not installed on this PC.\n\n"
             "Install it from:\n"
             "https://developer.microsoft.com/microsoft-edge/webview2/\n"
-            "(the \"Evergreen Bootstrapper\" download), then start Code Lite again."
+            "(the \"Evergreen Bootstrapper\" download), then start CodeLithe again."
         )
         return 1
 
@@ -366,7 +366,7 @@ def run(
     except ImportError:
         if screenshot is not None:
             show_startup_error(
-                "pywebview is not installed, so Code Lite cannot take a "
+                "pywebview is not installed, so CodeLithe cannot take a "
                 "screenshot.\n\nInstall it with:  pip install pywebview"
             )
             return 1
@@ -459,7 +459,7 @@ def run(
             if os.name == "nt"
             else ""
         )
-        show_startup_error(f"The Code Lite window could not start: {error}{hint}")
+        show_startup_error(f"The CodeLithe window could not start: {error}{hint}")
         return 1
 
     if screenshot is not None:

@@ -37,7 +37,7 @@ def _run_project_memory(args: dict[str, Any], ctx: ToolContext) -> str:
         data_root = ctx.data_dir.resolve()
         path = (data_root / GLOBAL_MEMORY_PATH).resolve()
         if data_root not in path.parents:
-            raise ToolError("Global memory path leaves the Code Lite data directory.")
+            raise ToolError("Global memory path leaves the CodeLithe data directory.")
         display_name = "global memory"
         label = str(path)
     elif scope == "project":

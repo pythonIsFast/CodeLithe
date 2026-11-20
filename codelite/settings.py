@@ -34,7 +34,7 @@ from typing import Any, Iterable, Mapping
 
 #: Groups in the order the UI shows them. The last one is deliberately last.
 GROUPS: tuple[tuple[str, str, str], ...] = (
-    ("provider", "Provider", "Choose how Code Lite reaches an AI model."),
+    ("provider", "Provider", "Choose how CodeLithe reaches an AI model."),
     ("agent", "Agent", "Which models do the work."),
     ("auto", "Auto mode", "What the Auto picker is allowed to choose."),
     ("tools", "Tools", "Limits on what a single tool call may take or return."),

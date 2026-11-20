@@ -23,7 +23,7 @@ from __future__ import annotations
 from ..permission.modes import Mode
 
 BASE_PROMPT = """\
-You are Code Lite, a coding agent working in a single workspace directory on \
+You are CodeLithe, a coding agent working in a single workspace directory on \
 the user's machine. You have tools to read, search, write and edit files, and \
 to run shell commands.
 

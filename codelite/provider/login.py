@@ -169,9 +169,9 @@ class ChatGPTLoginManager:
         success = valid and not callback_error
         body = _callback_page(
             "Sign-in complete" if success else "Sign-in failed",
-            "You can close this window and return to Code Lite."
+            "You can close this window and return to CodeLithe."
             if success
-            else "Return to Code Lite and try again.",
+            else "Return to CodeLithe and try again.",
         )
         handler.send_response(200 if success else 400)
         handler.send_header("Content-Type", "text/html; charset=utf-8")

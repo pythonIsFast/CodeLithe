@@ -16,7 +16,7 @@
 # from openai-oauth (https://github.com/EvanZhouDev/openai-oauth),
 # packages/core/src/runtime.ts and packages/core/src/models.ts, Apache-2.0.
 
-"""Central, reusable configuration for the Code Lite provider layer.
+"""Central, reusable configuration for the CodeLithe provider layer.
 
 Keeping every endpoint/model/path default in one place means the transport,
 auth, and server modules never hardcode a URL themselves -- and a later
@@ -75,7 +75,7 @@ REFRESH_INTERVAL_SECONDS = 55 * 60
 
 
 def default_auth_file_path() -> Path:
-    """Resolve Code Lite's own auth file, separate from Codex credentials."""
+    """Resolve CodeLithe's own auth file, separate from Codex credentials."""
     codelite_home = os.environ.get("CODELITE_HOME")
     if codelite_home:
         return Path(codelite_home) / AUTH_FILENAME

@@ -92,7 +92,7 @@ class LspClient:
             "initialize",
             {
                 "processId": None,
-                "clientInfo": {"name": "Code Lite", "version": "0.1"},
+                "clientInfo": {"name": "CodeLithe", "version": "0.1"},
                 "rootUri": _uri(self.workspace),
                 "workspaceFolders": [{"uri": _uri(self.workspace), "name": self.workspace.name}],
                 "capabilities": {

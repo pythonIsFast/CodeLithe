@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Start Code Lite.
+"""Start CodeLithe.
 
     python3 run.py
 
@@ -49,7 +49,7 @@ def main() -> int:
         # so name the likely fix instead of just re-raising the traceback.
         missing = getattr(error, "name", None) or "a dependency"
         return _fail(
-            f"could not import Code Lite -- {missing} is missing.\n"
+            f"could not import CodeLithe -- {missing} is missing.\n"
             f"  Install the app dependencies:  pip install -r "
             f"{PROJECT_ROOT / 'requirements.txt'}\n"
             f"  (details: {error})"

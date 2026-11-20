@@ -15,7 +15,7 @@
 """Minimal `multipart/form-data` decoder, stdlib-only.
 
 The stdlib's old `cgi.FieldStorage` did this job but is deprecated (and
-removed as of Python 3.13), so Code Lite parses the handful of fields
+removed as of Python 3.13), so CodeLithe parses the handful of fields
 `/v1/images/edits` needs (a prompt, a model, and 1-5 image files) by hand
 instead of depending on it.
 """
