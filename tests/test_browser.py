@@ -25,9 +25,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from codelite.browser.client import BrowserError
 from codelite.browser.host import BrowserActionError, BrowserSession, dispatch
 from codelite.permission.manager import PermissionDenied, PermissionManager
 from codelite.permission.modes import Mode
+from codelite.tools import browser as browser_tool
 from codelite.tools.base import ToolError
 from codelite.tools.browser import _run_browser
 from codelite.tools.context import ToolContext
@@ -191,19 +193,40 @@ def _context(tmp_path: Path, mode: Mode) -> ToolContext:
     )
 
 
-def test_navigate_is_never_gated(tmp_path: Path) -> None:
+def _no_browser(monkeypatch) -> None:
+    """Keep these tests off a real display.
+
+    Without this stub, a machine with pywebview and a display actually starts
+    the hidden browser and loads the test URL, which both slows the suite down
+    and puts a visible error page on screen. Permission gating is what these
+    tests are about; whether a window can open is not.
+    """
+
+    class DeadBrowser:
+        def call(self, *_args: Any, **_kwargs: Any) -> Any:
+            raise BrowserError("No browser process is running in this test.")
+
+    monkeypatch.setattr(browser_tool, "get_client", lambda: DeadBrowser())
+
+
+def test_navigate_is_never_gated(tmp_path: Path, monkeypatch) -> None:
     # Reading is treated like web_fetch: no confirmation, in any mode.
+    _no_browser(monkeypatch)
     ctx = _context(tmp_path, Mode.ASK)
     try:
         _run_browser({"action": "navigate", "url": "http://x"}, ctx)
     except ToolError as error:
-        # No BrowserClient is running in this test environment, so the call
-        # itself fails -- what matters is that it got past permissions.
-        assert "browser process" in str(error) or "Could not start" in str(error)
+        # The stubbed browser never starts, so the call itself fails -- what
+        # matters is that it got past permissions.
+        assert "browser process" in str(error)
+    else:
+        raise AssertionError("expected the stubbed browser call to fail")
 
 
-def test_navigate_never_asks_permission(tmp_path: Path) -> None:
+def test_navigate_never_asks_permission(tmp_path: Path, monkeypatch) -> None:
     """Reading is treated like web_fetch: no gate, in any mode."""
+
+    _no_browser(monkeypatch)
 
     class DenyingPermissions:
         def require_write(self, *_a: Any, **_k: Any) -> None:

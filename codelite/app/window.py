@@ -24,6 +24,7 @@ process and only ever listens on localhost.
 from __future__ import annotations
 
 import base64
+import inspect
 import logging
 import os
 import socket
@@ -34,6 +35,7 @@ import time
 import urllib.parse
 import webbrowser
 from pathlib import Path
+from typing import Any
 
 from ..config import (
     WINDOW_HEIGHT,
@@ -43,11 +45,26 @@ from ..config import (
     WINDOW_WIDTH,
     AppConfig,
 )
+from ..screenshot import (
+    available as screenshots_available,
+)
+from ..screenshot import (
+    capture_window_png,
+    resolve_path,
+)
 from .server import create_app
 
 logger = logging.getLogger(__name__)
 
 STARTUP_TIMEOUT_SECONDS = 15.0
+
+#: How long the interface gets to report itself ready before a screenshot is
+#: taken anyway -- a slow or failing front end must not hang the run.
+SCREENSHOT_READY_TIMEOUT_SECONDS = 15.0
+
+#: Settle time after the page reports ready, mostly for web fonts and the
+#: first paint of data that arrived just after `init()`.
+SCREENSHOT_DELAY_SECONDS = 2.0
 
 
 def serve_in_background(config: AppConfig) -> threading.Thread:
@@ -233,20 +250,99 @@ class JsApi:
             return None
 
 
-def run(config: AppConfig | None = None, headless: bool = False) -> None:
-    """Serve the app, and (unless ``headless``) open the native window."""
+def _wait_for_app_ready(
+    window: Any, timeout: float = SCREENSHOT_READY_TIMEOUT_SECONDS
+) -> None:
+    """Wait until the page loaded and the UI finished its first ``init()``.
+
+    ``js/15-bootstrap.js`` marks ``document.body.dataset.ready`` when startup
+    settles, so a screenshot taken after this shows the real interface instead
+    of a half-painted shell. Never raises: a broken front end should still
+    produce a screenshot after the timeout rather than abort the run.
+    """
+    deadline = time.monotonic() + timeout
+    events = getattr(window, "events", None)
+    loaded = getattr(events, "loaded", None)
+    if loaded is not None:
+        loaded.wait(max(0.0, deadline - time.monotonic()))
+
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        try:
+            ready = window.evaluate_js(
+                "document.readyState === 'complete' && "
+                "document.body.dataset.ready === 'true'"
+            )
+        except Exception:  # noqa: BLE001 - the page may not accept JS yet
+            ready = False
+        if ready:
+            return
+        time.sleep(min(0.15, remaining))
+
+
+def _capture_when_ready(
+    window: Any, destination: Path, delay: float
+) -> dict[str, Any]:
+    """Wait, snapshot the window into ``destination``, and close it.
+
+    Runs on the thread ``webview.start`` provides for background work. Errors
+    are returned instead of raised so ``run`` can report them after the native
+    event loop has exited, when a message box is actually visible again.
+    """
+    outcome: dict[str, Any] = {}
+    try:
+        _wait_for_app_ready(window)
+        if delay > 0:
+            time.sleep(delay)
+        png = capture_window_png(window)
+        path = resolve_path(destination)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(png)
+        outcome["path"] = path
+    except Exception as error:  # noqa: BLE001 - reported to the caller, see docstring
+        logger.error("Could not take the screenshot", exc_info=True)
+        outcome["error"] = error
+    finally:
+        try:
+            window.destroy()
+        except Exception:  # noqa: BLE001 - the window may already be gone
+            logger.debug("Could not close the window after the screenshot", exc_info=True)
+    return outcome
+
+
+def run(
+    config: AppConfig | None = None,
+    headless: bool = False,
+    screenshot: Path | None = None,
+    screenshot_delay: float = SCREENSHOT_DELAY_SECONDS,
+) -> int:
+    """Serve the app, and (unless ``headless``) open the native window.
+
+    With ``screenshot`` set, the window opens normally, is captured to that
+    path once the interface is ready, and then closes again. Returns a process
+    exit code so a failed capture is visible to the caller.
+    """
     config = config or AppConfig()
+    if screenshot is not None and headless:
+        show_startup_error(
+            "Screenshots need the native window, so --screenshot cannot be "
+            "combined with --headless."
+        )
+        return 1
+
     try:
         serve_in_background(config)
     except Exception as error:  # noqa: BLE001 - anything from Flask/create_app startup, not just the port-wait timeout
         logger.error("The Code Lite server could not start", exc_info=True)
         show_startup_error(str(error))
-        return
+        return 1
 
     if headless:
         logger.info("Code Lite is serving on %s (no window requested)", config.base_url)
         _block_forever()
-        return
+        return 0
 
     if os.name == "nt" and not _windows_webview2_present():
         # pywebview's Windows backend hosts the .NET CLR in-process via
@@ -263,11 +359,17 @@ def run(config: AppConfig | None = None, headless: bool = False) -> None:
             "https://developer.microsoft.com/microsoft-edge/webview2/\n"
             "(the \"Evergreen Bootstrapper\" download), then start Code Lite again."
         )
-        return
+        return 1
 
     try:
         import webview  # noqa: PLC0415 - optional at import time on purpose
     except ImportError:
+        if screenshot is not None:
+            show_startup_error(
+                "pywebview is not installed, so Code Lite cannot take a "
+                "screenshot.\n\nInstall it with:  pip install pywebview"
+            )
+            return 1
         logger.error(
             "pywebview is not installed, so the native window cannot open.\n"
             "  Install it with:  pip install pywebview\n"
@@ -276,7 +378,15 @@ def run(config: AppConfig | None = None, headless: bool = False) -> None:
             config.base_url,
         )
         _block_forever()
-        return
+        return 0
+
+    if screenshot is not None and not screenshots_available():
+        show_startup_error(
+            "Taking a screenshot of the app window is only supported on Linux "
+            "(WebKitGTK) for now.\n\nUnder Linux, this needs PyGObject and a "
+            "WebKit2 typelib (4.1 or 4.0) to be installed."
+        )
+        return 1
 
     if sys.platform.startswith("linux"):
         try:
@@ -289,6 +399,18 @@ def run(config: AppConfig | None = None, headless: bool = False) -> None:
             GLib.set_application_name(WINDOW_TITLE)
         except Exception:  # noqa: BLE001 - GTK integration is platform dependent
             logger.debug("Could not set the Linux application identity", exc_info=True)
+
+    outcome: dict[str, Any] = {}
+    start_call: dict[str, Any] = {}
+    if screenshot is not None:
+        destination = screenshot  # narrowed for the closure below
+
+        def when_ready() -> None:
+            outcome.update(
+                _capture_when_ready(webview.windows[0], destination, screenshot_delay)
+            )
+
+        start_call["func"] = when_ready
 
     try:
         webview.create_window(
@@ -313,7 +435,16 @@ def run(config: AppConfig | None = None, headless: bool = False) -> None:
             )
         )
         icon = next((str(path) for path in icon_candidates if path.is_file()), None)
-        webview.start(icon=icon)
+        start_options: dict[str, Any] = {}
+        # pywebview 5.0.x (still what several distributions ship) predates the
+        # `icon` keyword; passing it there raises TypeError before any window
+        # opens. Only hand it over when the installed version accepts it.
+        if "icon" in inspect.signature(webview.start).parameters:
+            start_options["icon"] = icon
+        # The callback runs once the native loop is up, on its own thread, and
+        # is where the screenshot waits for the page, snapshots it and closes
+        # the window again. Without a screenshot the loop simply owns the app.
+        webview.start(**start_call, **start_options)
     except Exception as error:  # noqa: BLE001 - the native webview backend can fail in many ways
         # On Windows this is almost always a missing/broken WebView2 Runtime.
         # webview.start() runs the whole native event loop, so any failure in
@@ -329,6 +460,21 @@ def run(config: AppConfig | None = None, headless: bool = False) -> None:
             else ""
         )
         show_startup_error(f"The Code Lite window could not start: {error}{hint}")
+        return 1
+
+    if screenshot is not None:
+        error = outcome.get("error")
+        saved = outcome.get("path")
+        if error is not None or saved is None:
+            show_startup_error(
+                f"Could not save the screenshot: {error or 'no image was produced'}"
+            )
+            return 1
+        # Printed as well as logged: this line is the machine-readable result
+        # of the mode, e.g. for a script that wants to open the file next.
+        print(f"Screenshot saved to {saved}")
+        logger.info("Screenshot saved to %s", saved)
+    return 0
 
 
 def _windows_webview2_present() -> bool:

@@ -25,7 +25,7 @@ import logging
 import sys
 from pathlib import Path
 
-from .app.window import run, show_startup_error
+from .app.window import SCREENSHOT_DELAY_SECONDS, run, show_startup_error
 from .config import DEFAULT_HOST, DEFAULT_PORT, AppConfig
 from .permission.modes import Mode
 
@@ -54,6 +54,28 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Serve the app without opening a window (open the URL yourself).",
     )
+    parser.add_argument(
+        "--screenshot",
+        nargs="?",
+        const=Path("screenshot.png"),
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Open the app, save a PNG of the window to PATH, then quit "
+            "(default: screenshot.png). Needs a native window; Linux/WebKitGTK only."
+        ),
+    )
+    parser.add_argument(
+        "--screenshot-delay",
+        type=float,
+        default=SCREENSHOT_DELAY_SECONDS,
+        metavar="SECONDS",
+        help=(
+            "Wait this long after the interface is ready before capturing "
+            f"(default: {SCREENSHOT_DELAY_SECONDS:g})."
+        ),
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging.")
     parser.add_argument(
         "--browser-host",
@@ -68,7 +90,14 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    parser = _parser()
+    args = parser.parse_args(argv)
+    if args.screenshot is not None and args.headless:
+        parser.error(
+            "--screenshot cannot be combined with --headless (it needs the native window)."
+        )
+    if args.screenshot_delay < 0:
+        parser.error("--screenshot-delay must be 0 or more.")
     if args.browser_host:
         from .browser.host import main as browser_host_main
 
@@ -89,7 +118,12 @@ def main(argv: list[str] | None = None) -> int:
         config.data_dir = Path(args.data_dir)
 
     try:
-        run(config, headless=args.headless)
+        return run(
+            config,
+            headless=args.headless,
+            screenshot=args.screenshot,
+            screenshot_delay=args.screenshot_delay,
+        )
     except KeyboardInterrupt:
         return 0
     except RuntimeError as error:

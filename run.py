@@ -23,6 +23,7 @@ flags from ``python3 -m codelite`` are accepted here too, for example:
 
     python3 run.py --mode permit_writes
     python3 run.py --headless
+    python3 run.py --screenshot ui.png
 """
 
 from __future__ import annotations

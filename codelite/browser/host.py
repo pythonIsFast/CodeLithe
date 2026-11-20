@@ -25,13 +25,14 @@ no window ever has to open for that.
 from __future__ import annotations
 
 import base64
-import io
 import json
 import logging
 import sys
-import threading
 import time
 from typing import Any, Callable, Protocol
+
+from ..screenshot import available as screenshots_available
+from ..screenshot import capture_window_png
 
 logger = logging.getLogger(__name__)
 
@@ -284,68 +285,13 @@ def serve(session: BrowserSession, stdin: Any = None, stdout: Any = None) -> Non
             return
 
 
-def _gtk_screenshot(window: WindowLike) -> bytes:
-    """Render the WebKitGTK widget via its native snapshot call.
-
-    pywebview wraps no screenshot API, so this reaches into its GTK backend's
-    internals (`window.gui.webview`) to get the actual `WebKit2.WebView` and
-    calls `get_snapshot` on it -- the officially supported WebKitGTK call,
-    just not one pywebview exposes. Expect this to need adjusting if a future
-    pywebview version stores the widget differently.
-    """
-    import gi
-
-    gi.require_version("WebKit2", "4.1")
-    from gi.repository import GLib, WebKit2  # noqa: PLC0415
-    from webview.platforms.gtk import BrowserView  # noqa: PLC0415
-
-    # pywebview keeps its per-window GTK state in a private registry keyed by
-    # the window's uid -- `window.gui` is the *platform module*, not the
-    # instance, which is the mistake this used to make. `.webview` on that
-    # instance is the actual `WebKit2.WebView` widget.
-    instance = BrowserView.instances.get(getattr(window, "uid", None))
-    webkit_widget = getattr(instance, "webview", None) if instance is not None else None
-    if webkit_widget is None:
-        raise BrowserActionError("Could not reach the underlying WebKitGTK widget.")
-
-    outcome: dict[str, Any] = {}
-    done = threading.Event()
-
-    def _finish(webview_widget: Any, task: Any, _user_data: Any = None) -> None:
-        try:
-            surface = webview_widget.get_snapshot_finish(task)
-            buffer = io.BytesIO()
-            surface.write_to_png(buffer)
-            outcome["png"] = buffer.getvalue()
-        except Exception as error:  # noqa: BLE001 - reported back, not raised on the GTK thread
-            outcome["error"] = str(error)
-        finally:
-            done.set()
-
-    def _start() -> bool:
-        webkit_widget.get_snapshot(
-            WebKit2.SnapshotRegion.FULL_DOCUMENT, WebKit2.SnapshotOptions.NONE, None, _finish
-        )
-        return False
-
-    # WebKit2's snapshot call has to run on the GTK main-loop thread, which is
-    # never the thread reading commands from stdin.
-    GLib.idle_add(_start)
-    if not done.wait(15):
-        raise BrowserActionError("Timed out waiting for the screenshot.")
-    if "error" in outcome:
-        raise BrowserActionError(outcome["error"])
-    return outcome["png"]
-
-
 def _screenshot_backend() -> Callable[[WindowLike], bytes] | None:
-    if not sys.platform.startswith("linux"):
-        return None
-    try:
-        import gi  # noqa: F401
-    except ImportError:
-        return None
-    return _gtk_screenshot
+    """The platform screenshot call, or None where there is none.
+
+    The WebKitGTK implementation lives in :mod:`codelite.screenshot` because
+    the app's own ``--screenshot`` mode uses the same call.
+    """
+    return capture_window_png if screenshots_available() else None
 
 
 def main() -> None:  # pragma: no cover - exercised manually, needs a real display

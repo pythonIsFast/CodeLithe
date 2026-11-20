@@ -90,9 +90,24 @@ python3 run.py --model gpt-5.6-sol
 # Serve the app without opening a native window.
 python3 run.py --headless
 
+# Open the app, capture the window as a PNG, then quit.
+python3 run.py --screenshot ui.png
+
+# Same, but give the interface a little longer to settle first.
+python3 run.py --screenshot ui.png --screenshot-delay 4
+
 # Run only the small OpenAI-compatible local provider.
 python3 -m codelite.provider
 ```
+
+`--screenshot` is a quick way to see what the interface actually renders
+without leaving a window open: it starts Code Lite normally, waits until the
+front end reports that startup finished (plus the optional delay), writes a
+PNG of the web content, and closes the app again. Without a path it saves to
+`screenshot.png` in the current directory; passing a directory saves
+`screenshot.png` inside it. It needs the native window, so it cannot be
+combined with `--headless`, and like the hidden browser's screenshot action it
+is Linux/WebKitGTK-only for now.
 
 </details>
 

@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 *.egg-info/
 auth.json
+screenshot.png
 *.db
 *.db-wal
 *.db-shm
