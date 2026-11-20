@@ -256,6 +256,9 @@ const TOOL_CATEGORY = {
   view_image: "image",
   showcase_file: "showcase",
   ask_user: "ask",
+  low_thinking: "tool",
+  normal_thinking: "tool",
+  "get_thinking-mode": "tool",
 };
 
 function toolCategory(name) {
@@ -283,6 +286,9 @@ const TOOL_PRESENTATION = {
   code_intelligence: { verb: "Code intelligence", text: firstText },
   project_memory: { verb: "Memory", text: firstText },
   extensions: { verb: "Extension", text: firstText },
+  low_thinking: { verb: "Lower thinking" },
+  normal_thinking: { verb: "Restore thinking" },
+  "get_thinking-mode": { verb: "Check thinking mode" },
 };
 
 function truncate(value, max = 72) {

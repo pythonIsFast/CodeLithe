@@ -121,15 +121,6 @@ SETTINGS: tuple[Setting, ...] = (
         help="Summarizes the complete visible conversation when Compact at is reached or Compact is pressed.",
     ),
     Setting(
-        key="lean_edit_continuations",
-        label="Less thinking between edits",
-        kind="bool",
-        default=True,
-        group="agent",
-        help="Use a lower supported thinking level after successful file edits. "
-        "The normal level is used for planning, failures, and new instructions.",
-    ),
-    Setting(
         key="auto_router_model",
         label="Routing model",
         kind="model",

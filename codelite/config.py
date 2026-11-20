@@ -146,7 +146,6 @@ class AppConfig:
     agent_model: str = DEFAULT_AGENT_MODEL
     judge_model: str = DEFAULT_JUDGE_MODEL
     compaction_model: str = DEFAULT_JUDGE_MODEL
-    lean_edit_continuations: bool = True
     default_permission_mode: Mode = Mode.ASK
     #: Empty means each model's own default from Codex's catalog.
     default_reasoning_effort: str = ""

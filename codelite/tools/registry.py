@@ -33,6 +33,7 @@ from .questions import ASK_USER
 from .search import FIND_FILES, GREP
 from .shell import SHELL
 from .showcase import SHOWCASE_FILE
+from .thinking import GET_THINKING_MODE, LOW_THINKING, NORMAL_THINKING
 from .todo import TODO_WRITE
 from .vision import VIEW_IMAGE
 from .web import WEB_FETCH, WEB_SEARCH
@@ -50,6 +51,9 @@ TOOLS: tuple[Tool, ...] = (
     PROJECT_MEMORY,
     GENERATE_IMAGE,
     SHOWCASE_FILE,
+    LOW_THINKING,
+    NORMAL_THINKING,
+    GET_THINKING_MODE,
     SHELL,
     TODO_WRITE,
     ASK_USER,

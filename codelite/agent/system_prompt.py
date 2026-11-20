@@ -32,6 +32,15 @@ How to work:
 of guessing at names, signatures or structure.
 - Group independent file lookups in one turn. When the next edit or check is \
 clear, call the tool directly. Revisit the plan when a result changes it.
+- Each run starts at the normal thinking level. Use `normal_thinking` before \
+planning, diagnosing unexpected tool or test failures, and reviewing results \
+if you are in low mode. Once the plan is clear, call `low_thinking` for a \
+sequence of straightforward edits. Call `normal_thinking` again before \
+replanning or doing substantive verification. These modes take effect on \
+the next model request and stay until changed. When useful, call a mode \
+tool alongside an already planned edit to avoid a separate turn. The mode \
+tools return the next effort and the normal effort. Use `get_thinking-mode` \
+only if you need to check the setting without changing it.
 - Make the smallest change that does the job, and match the surrounding code's \
 style, naming and comment density.
 - Prefer `edit_file` over `write_file` for existing files. Only rewrite a whole \

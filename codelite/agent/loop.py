@@ -58,8 +58,8 @@ logger = logging.getLogger(__name__)
 
 ASTRA_REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 PARALLEL_FILE_READS = frozenset({"read_file", "list_dir", "grep", "find_files"})
-EDIT_TOOLS = frozenset({"edit_file", "write_file"})
 MAX_READ_WORKERS = 4
+ACTIVE_THINKING_LEVELS = ("minimal", "low", "medium", "high", "xhigh", "max", "ultra")
 
 Publisher = Callable[[str, dict[str, Any]], None]
 
@@ -104,6 +104,7 @@ class AgentRunner:
             FALLBACK_MODEL if self._conversation.model == AUTO_MODEL else self._conversation.model
         )
         self._run_effort = self._conversation.reasoning_effort
+        self._low_thinking = False
         self._run_capabilities: dict[str, dict[str, Any]] = {}
         self._run_context_windows: dict[str, int] = {}
         self._project_context = ""
@@ -184,9 +185,10 @@ class AgentRunner:
             and not (is_go_model(self._conversation.model) or is_custom_model(self._conversation.model))
             else self._conversation.model
         )
-        # This is the run's baseline effort. Auto can choose it, and successful
-        # edits can use a lighter continuation without changing the baseline.
+        # Auto may pick the baseline; agent tools can change the effort for
+        # this run without touching the conversation's stored setting.
         self._run_effort = self._conversation.reasoning_effort
+        self._low_thinking = False
         conversation_id = self._conversation.id
         user_item = {
             "role": "user",
@@ -250,6 +252,7 @@ class AgentRunner:
             shell_timeout_seconds=self._config.shell_timeout_seconds,
             max_tool_output_chars=self._config.max_tool_output_chars,
             publish=self._publish,
+            thinking_control=self._control_thinking,
         )
 
         try:
@@ -299,7 +302,6 @@ class AgentRunner:
         over-long request, which surfaces through the normal error path.
         """
         step = 0
-        after_successful_edit = False
         # Direct image inputs from `view_image` stay in memory only until the
         # next turn consumes them. They must never be persisted or replayed.
         ephemeral_inputs: list[dict[str, Any]] = []
@@ -318,12 +320,9 @@ class AgentRunner:
                 self._publish("error", {"message": exhausted})
                 return
 
-            updated = self._apply_pending_updates(items)
+            self._apply_pending_updates(items)
             self._publish("step", {"step": step})
-            response = self._request_turn(
-                items, after_edit=after_successful_edit and not updated and compacted is None,
-            )
-            after_successful_edit = False
+            response = self._request_turn(items)
             if response is None:
                 self._publish(
                     "error",
@@ -367,14 +366,7 @@ class AgentRunner:
                 )
                 return
 
-            outcomes = self._execute_calls(calls, context)
-            results = [result for result, _ in outcomes]
-            names = [str(call.get("name") or "") for call in calls]
-            after_successful_edit = (
-                any(name in EDIT_TOOLS for name in names)
-                and all(name in EDIT_TOOLS or name in PARALLEL_FILE_READS for name in names)
-                and all(ok for _, ok in outcomes)
-            )
+            results = self._execute_calls(calls, context)
             items.extend(results)
             self._store.append_items(self._conversation.id, results)
             direct_inputs = context.take_model_inputs()
@@ -704,26 +696,39 @@ class AgentRunner:
             return self._session.send_responses(body, stream=stream, session_id=self._conversation.id)
         return self._session.send_responses(body, stream=stream)
 
-    def _edit_continuation_effort(self) -> str:
-        baseline = self._run_effort
-        if not self._config.lean_edit_continuations or baseline in ("none", "minimal", "low"):
-            return baseline
+    def _lower_thinking_effort(self) -> str:
+        """Find a lower active level the current model advertises."""
         try:
             capabilities = self._model_capabilities()
         except Exception:  # noqa: BLE001 - don't guess an unsupported level
-            return baseline
-        if (baseline or capabilities.get("default_effort")) not in (
-            "medium", "high", "xhigh", "max", "ultra",
-        ):
-            return baseline
-        for effort in ("minimal", "low"):
-            if effort in (capabilities.get("efforts") or ()):
-                return effort
-        return baseline
+            return ""
+        baseline = self._run_effort or capabilities.get("default_effort")
+        if baseline in ACTIVE_THINKING_LEVELS:
+            lower = ACTIVE_THINKING_LEVELS[:ACTIVE_THINKING_LEVELS.index(baseline)]
+        elif not baseline:
+            # With an unknown provider default, only offer explicit low levels.
+            lower = ("minimal", "low")
+        else:
+            return ""
+        allowed = capabilities.get("efforts") or ()
+        return next((effort for effort in lower if effort in allowed), "")
 
-    def _request_turn(
-        self, items: list[dict[str, Any]], *, after_edit: bool = False,
-    ) -> dict[str, Any] | None:
+    def _control_thinking(self, action: str) -> str:
+        if action == "normal":
+            self._low_thinking = False
+        lower = self._lower_thinking_effort() if action == "low" or self._low_thinking else ""
+        if action == "low":
+            self._low_thinking = bool(lower)
+        is_low = self._low_thinking and bool(lower)
+        normal = self._run_effort or "Auto (model default)"
+        active = lower if is_low else normal
+        mode = "low" if is_low else "normal"
+        result = f"Mode: {mode}. Next request: {active}. Normal setting: {normal}."
+        if action == "low" and not lower:
+            result += " No lower supported thinking level is available."
+        return result
+
+    def _request_turn(self, items: list[dict[str, Any]]) -> dict[str, Any] | None:
         body = {
             "model": self._run_model,
             "instructions": system_prompt.build(
@@ -743,7 +748,7 @@ class AgentRunner:
         # Only sent when something actually chose a level. Omitting the key lets
         # the transport fill in the model's own catalog default, which is a
         # better answer than any level this app could invent.
-        effort = self._edit_continuation_effort() if after_edit else self._run_effort
+        effort = (self._lower_thinking_effort() if self._low_thinking else "") or self._run_effort
         if effort:
             body["reasoning"] = {"effort": effort}
         # Only for a model that offers the tier. The backend accepts
@@ -850,16 +855,16 @@ class AgentRunner:
 
     def _execute_calls(
         self, calls: list[dict[str, Any]], context: ToolContext,
-    ) -> list[tuple[dict[str, Any], bool]]:
+    ) -> list[dict[str, Any]]:
         if self._local_extensions.has_hooks:
             # Hooks can mutate workspace state or ask for permission, even
             # around a built-in read.
             return [self._execute_call(call, context) for call in calls]
 
-        results = []
         def is_file_read(call: dict[str, Any]) -> bool:
             return str(call.get("name") or "") in PARALLEL_FILE_READS
 
+        results = []
         for read_only, group in groupby(calls, key=is_file_read):
             batch = list(group)
             if read_only and len(batch) > 1:
@@ -871,9 +876,7 @@ class AgentRunner:
                 results.extend(self._execute_call(call, context) for call in batch)
         return results
 
-    def _execute_call(
-        self, call: dict[str, Any], context: ToolContext
-    ) -> tuple[dict[str, Any], bool]:
+    def _execute_call(self, call: dict[str, Any], context: ToolContext) -> dict[str, Any]:
         call_id = call.get("call_id") or call.get("id") or ""
         name = str(call.get("name") or "")
         raw_arguments = call.get("arguments") or "{}"
@@ -883,7 +886,7 @@ class AgentRunner:
         self._publish(
             "tool_finished", {"call_id": call_id, "name": name, "output": output, "ok": ok}
         )
-        return {"type": "function_call_output", "call_id": call_id, "output": output}, ok
+        return {"type": "function_call_output", "call_id": call_id, "output": output}
 
     def _invoke(
         self, name: str, raw_arguments: str, context: ToolContext

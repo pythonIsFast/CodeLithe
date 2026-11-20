@@ -64,6 +64,8 @@ class ToolContext:
     #: readable but never writable through workspace tools.
     attachment_paths: frozenset[Path] = field(default_factory=frozenset)
     publish: Callable[[str, dict[str, Any]], None] | None = None
+    #: Ask this run to switch or report its reasoning effort.
+    thinking_control: Callable[[str], str] | None = None
 
     def __post_init__(self) -> None:
         if self.cwd is None:

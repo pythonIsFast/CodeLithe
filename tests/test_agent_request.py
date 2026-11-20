@@ -155,10 +155,13 @@ def _call(name, call_id, **arguments):
     }
 
 
-def test_edit_continuation_uses_less_effort_but_failure_restores_it(tmp_path: Path):
+def test_thinking_is_controlled_by_the_agent_tools(tmp_path: Path):
     replies = iter([
-        [_call("write_file", "write", path="result.txt", content="finished")],
-        [_call("edit_file", "edit", path="result.txt", old_string="missing", new_string="changed")],
+        [_call("write_file", "write", path="result.txt", content="first")],
+        [_call("low_thinking", "low"), _call("get_thinking-mode", "get-low")],
+        [_call("edit_file", "edit", path="result.txt", old_string="first", new_string="finished")],
+        [_call("edit_file", "failed", path="result.txt", old_string="missing", new_string="changed")],
+        [_call("normal_thinking", "normal"), _call("get_thinking-mode", "get-normal")],
         [],
     ])
 
@@ -173,9 +176,28 @@ def test_edit_continuation_uses_less_effort_but_failure_restores_it(tmp_path: Pa
     runner.run("Write the result")
 
     assert (tmp_path / "result.txt").read_text() == "finished"
-    assert [body["reasoning"]["effort"] for body in session.bodies] == ["high", "low", "high"]
-    runner._config.lean_edit_continuations = False
-    assert runner._edit_continuation_effort() == "high"
+    assert [body["reasoning"]["effort"] for body in session.bodies] == [
+        "high", "high", "low", "low", "low", "high",
+    ]
+    outputs = {
+        item["call_id"]: item["output"]
+        for item in runner._store.load_items(runner._conversation.id)
+        if item.get("type") == "function_call_output"
+    }
+    assert outputs["failed"].startswith("Error:")
+    assert outputs["get-low"] == "Mode: low. Next request: low. Normal setting: high."
+    assert outputs["get-normal"] == "Mode: normal. Next request: high. Normal setting: high."
+    assert runner._store.get_conversation(runner._conversation.id).reasoning_effort == "high"
+
+
+def test_thinking_tool_does_not_turn_reasoning_off_for_a_binary_model(tmp_path: Path):
+    session = FakeSession(efforts=["none", "high"])
+    runner = _runner(tmp_path, session, reasoning_effort="high")
+
+    output = runner._control_thinking("low")
+    assert "No lower supported thinking level" in output
+    runner._request_turn([])
+    assert session.bodies[0]["reasoning"] == {"effort": "high"}
 
 
 def test_file_reads_overlap_but_never_cross_a_write(tmp_path: Path, monkeypatch):
@@ -212,12 +234,14 @@ def test_file_reads_overlap_but_never_cross_a_write(tmp_path: Path, monkeypatch)
         "write_file": Tool(name="write_file", description="", parameters={}, run=write),
     }
     monkeypatch.setattr(registry, "get", tools.get)
-    outcomes = runner._execute_calls([
+    results = runner._execute_calls([
         _call("read_file", "one", path="first"),
         _call("read_file", "two", path="second"),
         _call("write_file", "three"),
         _call("read_file", "four", path="after"),
     ], ToolContext(workspace=tmp_path, permissions=runner._permissions, session=runner._session))
 
-    assert [item["call_id"] for item, ok in outcomes if ok] == ["one", "two", "three", "four"]
+    assert [(item["call_id"], item["output"]) for item in results] == [
+        ("one", "first"), ("two", "second"), ("three", "written"), ("four", "after"),
+    ]
     assert written.is_set()
