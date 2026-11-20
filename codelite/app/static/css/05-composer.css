@@ -382,16 +382,6 @@
 .usage.high .usage-ring-fill { color: var(--danger); }
 .usage.high { color: var(--danger); }
 
-/* The plan allowance sits next to the context ring, separated so the two
-   aren't read as one number -- they measure completely different things. */
-.usage.plan::before {
-  content: "";
-  width: 1px;
-  height: 13px;
-  margin-right: 4px;
-  background: var(--border);
-}
-
 /* The send control is a quiet return glyph inside the pill, the way the reference agent
    Code draws it -- Enter is the primary gesture, the click is the fallback. */
 .composer button#send {

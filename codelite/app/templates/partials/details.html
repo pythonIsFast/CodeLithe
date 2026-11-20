@@ -48,20 +48,14 @@
           </section>
 
           <section class="detail-card" id="detail-plan-card" hidden>
-            <h3>
-              Plan usage
-              <span class="usage plan" id="plan-usage" hidden title="">
-                <svg class="usage-ring" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
-                  <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor"
-                          stroke-width="3" class="usage-ring-track" />
-                  <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor"
-                          stroke-width="3" stroke-linecap="round" class="usage-ring-fill"
-                          id="plan-ring-fill" transform="rotate(-90 12 12)" />
-                </svg>
-                <span id="plan-label"></span>
-              </span>
-            </h3>
-            <div class="detail-bar"><span class="plan" id="detail-plan-bar"></span></div>
-            <p class="detail-note" id="detail-plan-note">Weekly allowance</p>
+            <h3>Plan usage</h3>
+            <section class="detail-plan-provider" id="detail-plan-chatgpt" hidden>
+              <h4>ChatGPT</h4>
+              <div id="detail-plan-chatgpt-windows"></div>
+            </section>
+            <section class="detail-plan-provider" id="detail-plan-go" hidden>
+              <h4>OpenCode Go</h4>
+              <div id="detail-plan-go-windows"></div>
+            </section>
           </section>
         </aside>

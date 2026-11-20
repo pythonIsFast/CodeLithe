@@ -69,59 +69,133 @@ function updateUsage({ contextTokens, contextWindow, totalTokens }) {
   el.usage.title = tips.join("\n");
 }
 
-/* -- ChatGPT plan usage ---------------------------------------------------- */
+/* -- Account allowances --------------------------------------------------- */
 
-/** "in 3 d", "in 5 h" -- how long until the allowance resets. */
-function untilReset(seconds) {
-  if (!Number.isFinite(seconds) || seconds <= 0) return "";
-  const days = Math.floor(seconds / 86400);
-  if (days >= 1) return `resets in ${days} d`;
-  const hours = Math.floor(seconds / 3600);
-  if (hours >= 1) return `resets in ${hours} h`;
-  return `resets in ${Math.max(1, Math.floor(seconds / 60))} min`;
+function planWindowLabel(minutes) {
+  if (minutes === 7 * 24 * 60) return "Weekly";
+  if (minutes % 1440 === 0) return `${minutes / 1440}-day`;
+  if (minutes % 60 === 0) return `${minutes / 60}-hour`;
+  return `${minutes}-minute`;
 }
 
-/**
- * Show how much of the ChatGPT plan's weekly allowance is gone.
- *
- * These figures come from the `x-codex-*` response headers, which only arrive
- * on a real request -- so this stays hidden until the first message has gone
- * out on a fresh install.
- */
-function updatePlanUsage(usage) {
-  const weekly = usage && usage.weekly;
-  if (!weekly || !Number.isFinite(weekly.used_percent)) {
-    el.planUsage.hidden = true;
-    el.detailPlanCard.hidden = true;
+function planResetLabel(resetAt) {
+  if (!resetAt) return "";
+  const date = new Date(typeof resetAt === "number" ? resetAt * 1000 : resetAt);
+  return Number.isFinite(date.getTime()) ? `Resets ${date.toLocaleString()}` : "";
+}
+
+function paintPlanWindows(target, windows, emptyMessage) {
+  target.replaceChildren();
+  if (!windows.length) {
+    const note = document.createElement("p");
+    note.className = "detail-note";
+    note.textContent = emptyMessage;
+    target.appendChild(note);
     return;
   }
+  for (const { label, percent, resetAt, description } of windows) {
+    const row = document.createElement("div");
+    row.className = "detail-plan-window";
+    row.classList.toggle("recommended", Boolean(description));
+    const title = document.createElement("span");
+    title.textContent = label;
+    const value = document.createElement("span");
+    value.className = "detail-value";
+    value.textContent = `${Math.round(percent)}% used`;
+    const meter = document.createElement("progress");
+    meter.max = 100;
+    meter.value = percent;
+    meter.setAttribute("aria-label", `${label} allowance used`);
+    row.append(title, value, meter);
+    const caption = description || planResetLabel(resetAt);
+    if (caption) {
+      const note = document.createElement("p");
+      note.className = "detail-note";
+      note.textContent = caption;
+      row.appendChild(note);
+    }
+    target.appendChild(row);
+  }
+}
 
-  const fraction = Math.min(1, Math.max(0, weekly.used_percent / 100));
-  el.planUsage.hidden = false;
-  el.detailPlanCard.hidden = false;
-  el.planLabel.textContent = `${Math.round(weekly.used_percent)}% weekly`;
-  el.planRingFill.style.strokeDashoffset = RING_CIRCUMFERENCE * (1 - fraction);
-  el.planUsage.classList.toggle("warn", fraction >= 0.6 && fraction < 0.85);
-  el.planUsage.classList.toggle("high", fraction >= 0.85);
-  el.detailPlanBar.style.width = `${fraction * 100}%`;
+function syncPlanCardVisibility() {
+  el.detailPlanCard.hidden = el.detailPlanChatGPT.hidden && el.detailPlanGo.hidden;
+}
 
-  const lines = [
-    `${Math.round(weekly.used_percent)}% of your weekly ChatGPT allowance used`,
-  ];
-  const reset = untilReset(weekly.reset_after_seconds);
-  if (reset) lines.push(reset.charAt(0).toUpperCase() + reset.slice(1));
-  if (usage.plan_type) lines.push(`Plan: ${usage.plan_type}`);
-  el.planUsage.title = lines.join("\n");
-  el.detailPlanNote.textContent = lines.slice(0, 2).join(" · ");
+function updatePlanUsage(usage) {
+  const windows = [usage?.primary, usage?.secondary]
+    .filter((window) => window?.window_minutes > 0 && Number.isFinite(window.used_percent))
+    .sort((a, b) => a.window_minutes - b.window_minutes)
+    .map((window) => ({
+      label: planWindowLabel(window.window_minutes),
+      percent: window.used_percent,
+      resetAt: window.reset_at,
+    }));
+  el.detailPlanChatGPT.hidden = !state.auth?.authenticated;
+  paintPlanWindows(el.detailPlanChatGPTWindows, windows, "Waiting for usage from a ChatGPT request.");
+  syncPlanCardVisibility();
+}
+
+function updateGoPlanUsage(usage, error = "") {
+  const windows = [];
+  for (const [key, label] of [["rolling", "5-hour"], ["weekly", "Weekly"], ["monthly", "Monthly"]]) {
+    const period = usage?.[key];
+    if (Number.isFinite(period?.percent)) {
+      windows.push({ label, percent: period.percent, resetAt: period.resets_at });
+    }
+  }
+  if (Number.isFinite(usage?.monthly?.percent)) {
+    // A quarter of the monthly allowance is the recommendation. The numerator
+    // is month-to-date usage because the API does not report weekly spend in
+    // units of the monthly budget.
+    windows.push({
+      label: "Weekly recommended",
+      percent: usage.monthly.percent * 4,
+      description: "Month-to-date use against ¼ of the monthly limit.",
+    });
+  }
+  const configured = state.auth?.opencode_go_usage;
+  el.detailPlanGo.hidden = !(state.auth?.opencode_go || configured);
+  const empty = configured ? "Waiting for OpenCode Go usage." : "Add a service account key in Settings.";
+  paintPlanWindows(el.detailPlanGoWindows, windows, error || empty);
+  syncPlanCardVisibility();
+}
+
+async function fetchGoPlanUsage() {
+  if (!state.auth?.opencode_go_usage) {
+    updateGoPlanUsage(null);
+    return {};
+  }
+  if (!state.goPlanRequest) {
+    state.goPlanRequest = get("/api/usage/opencode-go").finally(() => {
+      state.goPlanRequest = null;
+    });
+  }
+  try {
+    const { usage } = await state.goPlanRequest;
+    updateGoPlanUsage(usage);
+    return usage;
+  } catch (error) {
+    updateGoPlanUsage(null, error.message);
+    throw error;
+  }
+}
+
+function loadGoPlanUsage() {
+  return fetchGoPlanUsage().catch(() => {});
 }
 
 async function loadPlanUsage() {
-  if (!state.auth?.authenticated) return;
+  loadGoPlanUsage();
+  if (!state.auth?.authenticated) {
+    updatePlanUsage(null);
+    return;
+  }
   try {
     const data = await get("/api/usage");
     updatePlanUsage(data.usage);
   } catch {
-    // Non-essential: a missing allowance readout must not break startup.
+    // A missing allowance readout must not break startup.
   }
 }
 

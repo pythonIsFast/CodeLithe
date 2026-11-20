@@ -370,7 +370,7 @@ async function refreshGoUsage() {
   button.disabled = true;
   target.textContent = "Loading…";
   try {
-    const { usage } = await get("/api/usage/opencode-go");
+    const usage = await fetchGoPlanUsage();
     target.replaceChildren();
     for (const [key, label] of [["rolling", "5-hour"], ["weekly", "Weekly"], ["monthly", "Monthly"]]) {
       const period = usage[key];

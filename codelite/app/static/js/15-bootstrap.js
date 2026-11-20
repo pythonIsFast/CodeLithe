@@ -12,10 +12,10 @@ function startClock() {
 
 async function loadAuthenticatedApp() {
   await loadModels();
+  loadPlanUsage();
   if (state.appLoaded) return;
   state.appLoaded = true;
   connectSidebarActivity();
-  loadPlanUsage();
   await loadConversations();
 
   if (state.conversations.length) {

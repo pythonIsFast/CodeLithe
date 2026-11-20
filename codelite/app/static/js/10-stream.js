@@ -231,7 +231,14 @@ function connectStream(conversationId) {
   });
 
   on("done", () => { finalizeLiveText(); setBusy(false); resetLive(); });
-  on("run_finished", () => { finalizeLiveText(); setBusy(false); resetLive(); });
+  on("run_finished", () => {
+    finalizeLiveText();
+    setBusy(false);
+    resetLive();
+    if (state.active?.model === "auto" || state.active?.model.startsWith("opencode-go/")) {
+      loadGoPlanUsage();
+    }
+  });
   on("cancelled", () => {
     finalizeLiveText();
     setBusy(false);

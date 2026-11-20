@@ -28,7 +28,9 @@ class OpenCodeGoTests(unittest.TestCase):
             "usage_key": "usage-test-key",
         })
         self.assertEqual(response.json, {"api_key_configured": True, "usage_key_configured": True})
-        self.assertTrue(self.client.get("/api/auth").json["opencode_go"])
+        status = self.client.get("/api/auth").json
+        self.assertTrue(status["opencode_go"])
+        self.assertTrue(status["opencode_go_usage"])
         catalog = {"data": [{"id": "kimi-k3", "name": "Kimi K3", "limit": {"context": 123456}}]}
         usage = {"usage": {"rolling": {"percent": 27, "resetsAt": "2026-11-20T19:00:00Z"}}}
         with (

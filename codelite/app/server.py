@@ -408,7 +408,9 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
     def auth_status():
         status = login_manager().status()
         status["free_mode"] = rt().config.use_pollinations_free
-        status["opencode_go"] = rt().session.opencode_go.status()["api_key_configured"]
+        go_status = rt().session.opencode_go.status()
+        status["opencode_go"] = go_status["api_key_configured"]
+        status["opencode_go_usage"] = go_status["usage_key_configured"]
         status["custom_providers"] = rt().session.custom_providers.configured()
         return jsonify(status)
 
