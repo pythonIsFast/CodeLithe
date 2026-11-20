@@ -254,8 +254,7 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
             }
         )
 
-    @app.get("/api/models")
-    def models():
+    def picker_catalog() -> dict[str, Any]:
         runtime = rt()
         session = runtime.session
         free_mode = runtime.config.use_pollinations_free
@@ -273,7 +272,9 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
         except Exception:
             errors.append("Could not load ChatGPT models.")
             if login_manager().status().get("authenticated"):
-                slugs.extend(["auto", runtime.config.agent_model])
+                slugs.append("auto")
+                if not runtime.config.agent_model.startswith("opencode-go/"):
+                    slugs.append(runtime.config.agent_model)
 
         labels = {"auto": "Auto"}
         try:
@@ -284,7 +285,7 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
         except (OSError, ValueError, RuntimeError) as error:
             errors.append(str(error))
 
-        return jsonify({
+        return {
             "models": list(dict.fromkeys(slugs)),
             "labels": labels,
             "hidden_models": runtime.store.get_state("hidden_picker_models") or [],
@@ -292,7 +293,11 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
             "efforts": list(REASONING_EFFORTS),
             "capabilities": capabilities,
             "errors": errors,
-        })
+        }
+
+    @app.get("/api/models")
+    def models():
+        return jsonify(picker_catalog())
 
     @app.put("/api/settings/model-picker")
     def save_model_picker():
@@ -608,19 +613,14 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
         The schema travels with the values so the UI cannot invent a bound the
         server would reject -- there is one table, in `codelite/settings.py`.
         """
-        runtime = rt()
-        try:
-            models = runtime.session.list_models()
-        except Exception:  # noqa: BLE001 - the form is still usable offline
-            models = []
-        return jsonify(
-            {
-                "values": runtime.behaviour_settings(),
-                "schema": behaviour_schema(
-                    chat_models(models, runtime.session.config.image_model)
-                ),
-            }
-        )
+        catalog = picker_catalog()
+        hidden = set(catalog["hidden_models"])
+        # Auto is a routing mode, and cannot itself be routed to.
+        visible = [model for model in catalog["models"] if model not in hidden and model != "auto"]
+        return jsonify({
+            "values": rt().behaviour_settings(),
+            "schema": {**behaviour_schema(visible), "model_labels": catalog["labels"]},
+        })
 
     @app.put("/api/settings/behaviour")
     def save_behaviour_settings():

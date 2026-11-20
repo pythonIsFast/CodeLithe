@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator
 
-from ..agent.judge import make_shell_judge
+from ..agent.judge import judge_shell_command
 from ..agent.loop import AgentRunner
 from .. import settings as behaviour
 from ..config import AppConfig, normalize_effort
@@ -108,16 +108,8 @@ class Runtime:
 
     def save_behaviour_settings(self, raw: dict[str, Any]) -> dict[str, Any]:
         """Validate, persist and activate. Raises ValueError on a bad type."""
-        target_free = raw.get("use_pollinations_free", self.config.use_pollinations_free)
-        previous_free = self.session.use_pollinations_free
-        try:
-            self.session.use_pollinations_free = bool(target_free)
-            models = [] if target_free else self.session.list_models()
-        except Exception:  # noqa: BLE001 - a catalog outage must not block a save
-            models = []
-        finally:
-            self.session.use_pollinations_free = previous_free
-        values = behaviour.coerce(raw, models)
+        # Model preferences outlive catalog outages and visibility changes.
+        values = behaviour.coerce({**self.behaviour_settings(), **raw})
         self.store.set_state(BEHAVIOUR_KEY, values)
         return self._apply_behaviour(values)
 
@@ -181,7 +173,9 @@ class Runtime:
                         publish=lambda event, data, cid=conversation.id: self.publish(
                             cid, event, data
                         ),
-                        judge=make_shell_judge(self.session, self.config.judge_model),
+                        judge=lambda command, task, cid=conversation.id: judge_shell_command(
+                            self.session, self.config.judge_model, command, task, session_id=cid,
+                        ),
                     ),
                     questions=QuestionManager(
                         publish=lambda event, data, cid=conversation.id: self.publish(

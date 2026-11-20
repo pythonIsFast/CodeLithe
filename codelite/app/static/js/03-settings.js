@@ -455,6 +455,7 @@ async function saveModelVisibility(event) {
     });
     state.hiddenModels = [...hidden];
     if (state.modelCatalog) applyModelVisibility();
+    refreshBehaviourModels();
     status.textContent = "Model visibility saved.";
   } catch (error) {
     status.textContent = error.message;

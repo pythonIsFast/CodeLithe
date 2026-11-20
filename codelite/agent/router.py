@@ -13,6 +13,7 @@ from typing import Any, Sequence
 from ..config import normalize_effort
 from ..provider.chat import parse_responses_output
 from ..provider.session import Session
+from ..provider.opencode_go import is_go_model
 
 AUTO_MODEL = "auto"
 ROUTER_MODEL = "gpt-5.6-luna"
@@ -44,7 +45,7 @@ MODEL_PROFILES = {
 
 ROUTER_INSTRUCTIONS = """\
 You are the lightweight model router for a local coding agent. Choose the
-cheapest GPT-5.6 model that is capable of completing the user's task.
+cheapest available model that is capable of completing the user's task.
 
 Choose gpt-5.6-luna for focused questions, routine edits, small lookups, and
 simple bounded tasks. Choose gpt-5.6-terra for typical multi-file changes,
@@ -76,6 +77,8 @@ def _instructions(allowed: Sequence[str]) -> str:
     routing round trip on a decision that can only fail validation.
     """
     text = ROUTER_INSTRUCTIONS % {"models": "|".join(allowed)}
+    if any(is_go_model(model) for model in allowed):
+        text += "\nUse the same cost and capability criteria for OpenCode Go models."
     # The prose above still describes every model by name. When the set has
     # been narrowed, say so explicitly rather than relying on validation to
     # catch a choice the prompt itself invited.
@@ -96,7 +99,7 @@ class ModelDecision:
         return {
             "router": MODEL_PROFILES[ROUTER_MODEL]["name"],
             "model": self.model,
-            "model_name": MODEL_PROFILES[self.model]["name"],
+            "model_name": MODEL_PROFILES.get(self.model, {}).get("name", self.model),
             "reason": self.reason,
             "effort": self.effort,
             "fallback": self.fallback,
@@ -123,6 +126,7 @@ def select_model(
     router_model: str = ROUTER_MODEL,
     fallback_model: str = FALLBACK_MODEL,
     routable: Sequence[str] = (),
+    session_id: str = "",
 ) -> tuple[ModelDecision, dict[str, Any]]:
     """Route one message, falling back to `fallback_model` if that fails.
 
@@ -138,7 +142,8 @@ def select_model(
         "input": [{"role": "user", "content": [{"type": "input_text", "text": user_text}]}],
     }
     try:
-        response = session.send_responses(body, stream=False)
+        request_options = {"session_id": session_id} if is_go_model(body["model"]) else {}
+        response = session.send_responses(body, stream=False, **request_options)
         if not isinstance(response, dict):
             raise ValueError("Luna returned an unreadable response.")
         text = response.get("output_text")
@@ -155,12 +160,13 @@ def select_model(
         effort = normalize_effort(parsed.get("effort"))
         return ModelDecision(model=model, reason=reason.strip()[:400], effort=effort), response
     except Exception as error:  # noqa: BLE001 - routing must never prevent a task
+        fallback = fallback_model or FALLBACK_MODEL
         return (
             ModelDecision(
-                model=fallback_model or FALLBACK_MODEL,
+                model=fallback,
                 reason=(
                     "Auto could not make a routing decision, so Code Lite chose "
-                    "Terra as the balanced fallback."
+                    f"{fallback} as the configured fallback."
                 ),
                 effort="medium",
                 fallback=True,

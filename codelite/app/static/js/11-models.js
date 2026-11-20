@@ -8,7 +8,9 @@ function ensureModelOption(model) {
   if (!model || [...el.modelSelect.options].some((option) => option.value === model)) return;
   const option = document.createElement("option");
   option.value = model;
-  option.textContent = state.modelLabels?.[model] || (model === "auto" ? "Auto" : model);
+  option.textContent = state.models.includes(model)
+    ? (state.modelLabels?.[model] || (model === "auto" ? "Auto" : model))
+    : (state.hiddenModels?.includes(model) ? "Hidden model" : "Unavailable model");
   // Existing chats can display a hidden or unavailable model as their current value.
   option.hidden = !state.models.includes(model);
   option.disabled = option.hidden;
@@ -106,6 +108,7 @@ async function loadModels() {
   state.efforts = data.efforts || ["low", "medium", "high"];
   state.capabilities = data.capabilities || {};
   applyModelVisibility();
+  refreshBehaviourModels();
   for (const error of data.errors || []) toast(error, true);
 }
 

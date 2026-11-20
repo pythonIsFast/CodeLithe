@@ -210,6 +210,7 @@ class AgentRunner:
                 router_model=self._config.auto_router_model,
                 fallback_model=self._config.auto_fallback_model,
                 routable=self._config.auto_models,
+                session_id=conversation_id,
             )
             self._run_model = decision.model
             self._run_effort = decision.effort or self._run_effort

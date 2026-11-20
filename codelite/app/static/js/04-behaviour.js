@@ -4,7 +4,7 @@
 
 /* -- Behaviour settings --------------------------------------------------- */
 
-function behaviourRow(setting, value, models) {
+function behaviourRow(setting, value, models, modelLabels) {
   const row = document.createElement("div");
   row.className = "behaviour-row";
 
@@ -35,10 +35,8 @@ function behaviourRow(setting, value, models) {
     const list = document.createElement("div");
     list.className = "behaviour-models";
     const selected = new Set(value || []);
-    // Fall back to the stored value when the catalog is unreachable, so an
-    // offline form still shows what is actually configured.
-    const choices = models.length ? models : [...selected];
-    for (const model of choices) {
+    list.dataset.unlistedModels = JSON.stringify([...selected].filter((model) => !models.includes(model)));
+    for (const model of models) {
       const pill = document.createElement("label");
       pill.className = "behaviour-model" + (selected.has(model) ? " on" : "");
       const box = document.createElement("input");
@@ -47,11 +45,12 @@ function behaviourRow(setting, value, models) {
       box.dataset.model = model;
       box.addEventListener("change", () => pill.classList.toggle("on", box.checked));
       const text = document.createElement("span");
-      text.textContent = model;
+      text.textContent = modelLabels[model] || model;
       pill.append(box, text);
       list.appendChild(pill);
     }
     list.dataset.settingKey = setting.key;
+    if (!models.length) list.textContent = "No visible models";
     control.appendChild(list);
   } else if (setting.kind === "model") {
     const picker = document.createElement("div");
@@ -61,16 +60,24 @@ function behaviourRow(setting, value, models) {
     select.className = "custom-select-source";
     select.tabIndex = -1;
     select.dataset.settingKey = setting.key;
-    const choices = models.includes(value) || !value ? models : [value, ...models];
-    for (const model of choices.length ? choices : [value]) {
+    select.dataset.configuredModel = value || "";
+    if (!models.includes(value)) {
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = models.length ? "Select a visible model" : "No visible models";
+      placeholder.disabled = true;
+      select.appendChild(placeholder);
+    }
+    for (const model of models) {
       const option = document.createElement("option");
       option.value = model;
-      option.textContent = model;
+      option.textContent = modelLabels[model] || model;
       select.appendChild(option);
     }
-    select.value = value;
+    select.value = models.includes(value) ? value : "";
     const trigger = document.createElement("button");
     trigger.type = "button";
+    trigger.disabled = !models.length;
     trigger.className = "custom-select-trigger";
     trigger.setAttribute("aria-haspopup", "listbox");
     trigger.setAttribute("aria-expanded", "false");
@@ -135,9 +142,11 @@ function renderBehaviour(schema, values) {
   const activeTab = state.settingsTab;
 
   for (const old of document.querySelectorAll("[data-behaviour-panel], [data-behaviour-tab]")) {
+    for (const select of old.querySelectorAll("select")) customSelects.delete(select);
     old.remove();
   }
-  const models = schema.models || [];
+  const models = state.modelCatalog ? state.models.filter((model) => model !== "auto") : schema.models || [];
+  const modelLabels = state.modelLabels || schema.model_labels || {};
 
   for (const group of schema.groups) {
     const settings = schema.settings.filter((setting) => setting.group === group.key);
@@ -163,7 +172,7 @@ function renderBehaviour(schema, values) {
     const card = document.createElement("div");
     card.className = "settings-card";
     for (const setting of settings) {
-      card.appendChild(behaviourRow(setting, values[setting.key], models));
+      card.appendChild(behaviourRow(setting, values[setting.key], models, modelLabels));
     }
     panel.appendChild(card);
 
@@ -213,13 +222,20 @@ function collectBehaviour() {
     values[input.dataset.settingKey] = input.dataset.kind === "int" ? Math.round(raw) : raw;
   }
   for (const select of document.querySelectorAll(`${scope} select[data-setting-key]`)) {
-    values[select.dataset.settingKey] = select.value;
+    values[select.dataset.settingKey] = select.value || select.dataset.configuredModel;
   }
   for (const list of document.querySelectorAll(`${scope} [data-setting-key].behaviour-models`)) {
-    values[list.dataset.settingKey] = [...list.querySelectorAll("input:checked")]
-      .map((box) => box.dataset.model);
+    // An unavailable choice stays stored so editing other settings cannot drop it.
+    const checked = [...list.querySelectorAll("input:checked")].map((box) => box.dataset.model);
+    values[list.dataset.settingKey] = [...JSON.parse(list.dataset.unlistedModels), ...checked];
   }
   return values;
+}
+
+function refreshBehaviourModels() {
+  if (state.behaviour && !el.settingsOverlay.hidden) {
+    renderBehaviour(state.behaviour.schema, collectBehaviour());
+  }
 }
 
 async function saveBehaviour(values) {
@@ -232,6 +248,17 @@ async function saveBehaviour(values) {
   // the value that is actually in effect, not the one that was typed.
   state.behaviour = { ...state.behaviour, values: data.values };
   renderBehaviour(state.behaviour.schema, data.values);
+  state.meta = await get("/api/meta");
+  await loadModels();
+  const freeChanged = previousFree !== Boolean(data.values.use_pollinations_free);
+  if (freeChanged && state.active && !state.active.model.startsWith("opencode-go/")) {
+    const model = data.values.use_pollinations_free ? "openai-fast" : state.meta.default_model;
+    state.active = await patch(`/api/conversations/${state.active.id}`, { model });
+    ensureModelOption(model);
+    el.modelSelect.value = model;
+    renderCustomSelect(el.modelSelect);
+  }
+  await refreshAuth();
   const clamped = Object.keys(data.values).filter(
     (key) => String(data.values[key]) !== String(values[key]) && key in values,
   );
@@ -244,17 +271,6 @@ async function saveBehaviour(values) {
       : "Saved.";
   }
   toast("Settings saved.");
-  state.meta = await get("/api/meta");
-  await loadModels();
-  const freeChanged = previousFree !== Boolean(data.values.use_pollinations_free);
-  if (freeChanged && state.active && !state.active.model.startsWith("opencode-go/")) {
-    const model = data.values.use_pollinations_free ? "openai-fast" : state.meta.default_model;
-    state.active = await patch(`/api/conversations/${state.active.id}`, { model });
-    ensureModelOption(model);
-    el.modelSelect.value = model;
-    renderCustomSelect(el.modelSelect);
-  }
-  await refreshAuth();
 }
 
 async function loadCodexImport() {

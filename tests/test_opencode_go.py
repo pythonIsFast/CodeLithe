@@ -7,6 +7,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from codelite.agent.router import select_model
 from codelite.app.server import create_app
 from codelite.config import AppConfig
 from codelite.provider.auth import AuthError
@@ -50,6 +51,44 @@ class OpenCodeGoTests(unittest.TestCase):
             data = self.client.get("/api/models").json
             self.assertEqual(data["hidden_models"], ["opencode-go/kimi-k3"])
             self.assertIn("opencode-go/kimi-k3", data["models"])
+
+    def test_behaviour_model_choices_use_catalog_visibility(self):
+        go_model = "opencode-go/kimi-k3"
+        self.go.save({"api_key": "inference-test-key"})
+        with (
+            patch.object(self.go, "_json", return_value={"data": [{"id": "kimi-k3", "name": "Kimi K3"}]}),
+            patch.object(self.session, "list_models", return_value=["gpt-6-astra", "gpt-5.6-luna"]),
+            patch.object(self.session._transport, "resolve_model_info", return_value=None),
+        ):
+            self.client.put("/api/settings/model-picker", json={"hidden_models": ["gpt-5.6-luna"]})
+            schema = self.client.get("/api/settings/behaviour").json["schema"]
+            self.assertEqual(schema["models"], ["gpt-6-astra", go_model])
+            self.assertEqual(schema["model_labels"][go_model], "Kimi K3 · OpenCode Go")
+            values = {"agent_model": go_model, "auto_models": [go_model]}
+            result = self.client.put("/api/settings/behaviour", json={"values": values}).json["values"]
+            self.assertEqual(result["agent_model"], go_model)
+            self.assertEqual(result["auto_models"], [go_model])
+            self.client.put("/api/settings/model-picker", json={"hidden_models": [go_model]})
+            data = self.client.get("/api/settings/behaviour").json
+            self.assertNotIn(go_model, data["schema"]["models"])
+            self.assertEqual(data["values"]["agent_model"], go_model)
+            saved = self.client.put("/api/settings/behaviour", json={
+                "values": {"use_pollinations_free": True},
+            }).json["values"]
+            self.assertEqual(saved["agent_model"], go_model)
+            self.assertEqual(saved["auto_models"], [go_model])
+
+    def test_auto_routes_to_go_and_publishes_the_model(self):
+        model = "opencode-go/kimi-k3"
+        response = {"output_text": json.dumps({"model": model, "effort": "low", "reason": "Good fit"})}
+        with patch.object(self.go, "send", return_value=response) as request:
+            decision, _ = select_model(
+                self.session, "Rename this label", router_model=model,
+                routable=[model], session_id="test-conversation",
+            )
+        self.assertEqual(request.call_args.kwargs["session_id"], "test-conversation")
+        self.assertEqual(decision.as_event_payload()["model"], model)
+        self.assertFalse(decision.fallback)
 
     def test_stream_uses_go_session_and_replays_tool_call_pair(self):
         self.go.save({"api_key": "inference-test-key"})

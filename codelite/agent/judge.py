@@ -33,6 +33,7 @@ from typing import Any
 
 from ..provider.chat import parse_responses_output
 from ..provider.session import Session
+from ..provider.opencode_go import is_go_model
 
 JUDGE_INSTRUCTIONS = """\
 You are the safety gate for a coding agent's shell access. You will be given \
@@ -91,7 +92,7 @@ def _parse_verdict(text: str) -> tuple[bool, str]:
 
 
 def judge_shell_command(
-    session: Session, model: str, command: str, task_prompt: str
+    session: Session, model: str, command: str, task_prompt: str, *, session_id: str = ""
 ) -> tuple[bool, str]:
     """Ask the judge model whether ``command`` may run. Returns (allowed, reason)."""
     prompt = (
@@ -103,14 +104,15 @@ def judge_shell_command(
         "instructions": JUDGE_INSTRUCTIONS,
         "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}],
     }
-    response = session.send_responses(body, stream=False)
+    request_options = {"session_id": session_id} if is_go_model(model) else {}
+    response = session.send_responses(body, stream=False, **request_options)
     if not isinstance(response, dict):
         return False, "The judge model returned an unreadable response."
     return _parse_verdict(parse_responses_output(response).text)
 
 
 def make_shell_judge(session: Session, model: str):
-    """Bind a session and model into the ``ShellJudge`` callable the manager wants."""
+    """Bind a session and model into a permission manager's shell judge."""
 
     def judge(command: str, task_prompt: str) -> tuple[bool, str]:
         return judge_shell_command(session, model, command, task_prompt)
