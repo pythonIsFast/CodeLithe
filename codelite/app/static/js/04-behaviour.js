@@ -130,6 +130,7 @@ const behaviourPages = {
   tools: ["agent", "Tool limits"],
   context: ["agent", "Project context"],
   integrations: ["workspace", "Integration limits"],
+  desktop: ["app", "Desktop"],
   danger: ["agent", "Context limits"],
 };
 
@@ -186,7 +187,7 @@ function renderBehaviour(schema, values) {
     const save = document.createElement("button");
     save.type = "button";
     save.className = "btn primary";
-    save.textContent = "Save agent settings";
+    save.textContent = "Save settings";
     save.dataset.behaviourSave = "";
     actions.append(reset, save);
     panel.appendChild(actions);

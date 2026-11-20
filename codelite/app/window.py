@@ -320,6 +320,10 @@ def run(
         )
         return 1
 
+    if sys.platform.startswith("linux") and config.low_memory_webview:
+        # WebKit reads this when it starts its renderer.
+        os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
+
     try:
         import webview  # noqa: PLC0415 - optional at import time on purpose
     except ImportError:

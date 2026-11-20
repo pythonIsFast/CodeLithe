@@ -54,8 +54,11 @@ function checkBusyRun() {
 }
 
 function resetLive() {
-  if (state.liveTextFrame !== null) cancelAnimationFrame(state.liveTextFrame);
-  state.liveTextFrame = null;
+  if (state.liveTextTimer !== null) clearTimeout(state.liveTextTimer);
+  state.liveTextTimer = null;
+  state.liveTextLastPaint = -Infinity;
+  state.liveTextPending = "";
+  state.liveReasoningPending = "";
   state.liveText = null;
   state.liveReasoning = null;
   state.liveTodos = null;
@@ -113,17 +116,15 @@ function connectStream(conversationId) {
   });
 
   on("text_delta", (data) => {
-    if (!state.liveText) state.liveText = append(assistantBubble(""));
-    const bubble = state.liveText;
-    bubble.dataset.raw += data.delta || "";
-    // Keep streaming visually, with at most one Markdown render per frame.
-    if (state.liveTextFrame === null) state.liveTextFrame = requestAnimationFrame(paintLiveText);
+    if (!state.liveText) state.liveText = append(streamingAssistantBubble());
+    state.liveTextPending += data.delta || "";
+    scheduleLiveTextPaint();
   });
 
   on("reasoning_delta", (data) => {
     if (!state.liveReasoning) state.liveReasoning = append(reasoningBlock(""));
-    state.liveReasoning.textContent += data.delta || "";
-    scrollDown();
+    state.liveReasoningPending += data.delta || "";
+    scheduleLiveTextPaint();
   });
 
   on("tool_started", (data) => {

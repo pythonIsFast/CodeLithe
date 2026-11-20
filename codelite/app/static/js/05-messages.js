@@ -92,7 +92,7 @@ function scrollDown(force = false) {
 function append(node) {
   const stick = atBottom();
   el.messages.appendChild(node);
-  scrollDown(stick);
+  if (stick) scrollDown(true);
   return node;
 }
 
@@ -138,6 +138,13 @@ function assistantBubble(text = "") {
   return div;
 }
 
+function streamingAssistantBubble() {
+  const div = document.createElement("div");
+  div.className = "msg assistant streaming";
+  div.appendChild(document.createTextNode(""));
+  return div;
+}
+
 function errorBubble(message) {
   const div = document.createElement("div");
   div.className = "msg error";
@@ -148,7 +155,7 @@ function errorBubble(message) {
 function reasoningBlock(text = "") {
   const div = document.createElement("div");
   div.className = "reasoning";
-  div.textContent = text;
+  div.appendChild(document.createTextNode(text));
   return div;
 }
 

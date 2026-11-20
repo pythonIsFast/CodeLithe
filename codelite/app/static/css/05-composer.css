@@ -16,14 +16,11 @@
 }
 .status-bar[hidden] { display: none; }
 
-.spinner {
-  width: 12px; height: 12px;
-  border: 2px solid var(--border);
-  border-top-color: var(--accent);
+.status-dot {
+  width: 8px; height: 8px;
+  background: var(--accent);
   border-radius: 50%;
-  animation: spin .7s linear infinite;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
 
 .stop {
   margin-left: auto;

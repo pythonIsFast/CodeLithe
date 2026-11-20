@@ -104,14 +104,27 @@ function attachFooter(bubble, { at, outputTokens } = {}) {
   return footer;
 }
 
+const LIVE_TEXT_PAINT_INTERVAL_MS = 100;
+
+function scheduleLiveTextPaint() {
+  if (state.liveTextTimer !== null) return;
+  const remaining = state.liveTextLastPaint + LIVE_TEXT_PAINT_INTERVAL_MS - performance.now();
+  state.liveTextTimer = setTimeout(paintLiveText, Math.max(0, remaining));
+}
+
 function paintLiveText() {
-  if (state.liveTextFrame === null) return;
-  cancelAnimationFrame(state.liveTextFrame);
-  state.liveTextFrame = null;
-  const bubble = state.liveText;
-  if (!bubble?.isConnected) return;
+  if (state.liveTextTimer === null) return;
+  clearTimeout(state.liveTextTimer);
+  state.liveTextTimer = null;
+  state.liveTextLastPaint = performance.now();
+  const text = state.liveTextPending;
+  const reason = state.liveReasoningPending;
+  state.liveTextPending = "";
+  state.liveReasoningPending = "";
+  if (!text && !reason) return;
   const stick = atBottom();
-  bubble.innerHTML = formatMarkdown(bubble.dataset.raw);
+  if (text && state.liveText?.isConnected) state.liveText.firstChild.appendData(text);
+  if (reason && state.liveReasoning?.isConnected) state.liveReasoning.firstChild.appendData(reason);
   if (stick) scrollDown(true);
 }
 
@@ -122,10 +135,17 @@ function finalizeLiveText() {
   state.liveText = null;
   if (!bubble || !bubble.isConnected) return;
   if (bubble.querySelector(".msg-foot")) return;
+  const stick = atBottom();
+  bubble.dataset.raw = bubble.textContent;
+  // Render Markdown once at the message boundary. Replacing the whole DOM
+  // on every chunk makes even a short stream redraw and relayout repeatedly.
+  bubble.innerHTML = formatMarkdown(bubble.dataset.raw);
+  bubble.classList.remove("streaming");
   attachFooter(bubble, {
     at: new Date().toISOString(),
     outputTokens: state.lastTurnOutputTokens,
   });
+  if (stick) scrollDown(true);
 }
 
 /** Re-send the most recent user message. */

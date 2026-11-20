@@ -49,6 +49,7 @@ GROUPS: tuple[tuple[str, str, str], ...] = (
         "How much project memory and instruction text is put in front of the model. "
         "This is spent on every run, so it is a direct cost.",
     ),
+    ("desktop", "Desktop", "Resource settings for the native window."),
     (
         "danger",
         "Danger zone",
@@ -255,6 +256,15 @@ SETTINGS: tuple[Setting, ...] = (
         maximum=60_000,
         unit="chars",
         step=500,
+    ),
+    Setting(
+        key="low_memory_webview",
+        label="Reduce WebView memory",
+        kind="bool",
+        default=False,
+        group="desktop",
+        help="Linux only. Uses a lower-memory WebKit renderer. It can increase "
+        "startup time and CPU use on some systems. Restart CodeLithe to apply.",
     ),
     Setting(
         key="context_compact_fraction",

@@ -150,6 +150,7 @@ class AppConfig:
     #: Empty means each model's own default from Codex's catalog.
     default_reasoning_effort: str = ""
     use_pollinations_free: bool = False
+    low_memory_webview: bool = False
     shell_timeout_seconds: int = SHELL_TIMEOUT_SECONDS
     max_tool_output_chars: int = MAX_TOOL_OUTPUT_CHARS
     context_stop_fraction: float = CONTEXT_STOP_FRACTION

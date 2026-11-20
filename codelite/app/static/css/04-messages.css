@@ -9,7 +9,6 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  scroll-behavior: smooth;
   font-size: 14px;
   line-height: 1.65;
   /* Let the user select and copy the transcript. Some embedded webviews
@@ -25,6 +24,11 @@
    soon as the conversation is long enough to overflow -- which read as
    mysterious thin lines where the tool calls should be. */
 .messages > * { flex: 0 0 auto; }
+
+.msg.assistant.streaming {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 
 .empty {
   margin: auto;
@@ -219,9 +223,7 @@
 .tool-call-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .tool-call-icon { display: flex; flex: 0 0 auto; opacity: .75; }
-/* A call that has not come back yet breathes, like the reference desktop agent dots. */
-.tool-call.running .tool-call-icon { animation: tool-pulse 1.2s ease-in-out infinite; }
-@keyframes tool-pulse { 50% { opacity: .25; } }
+.tool-call.running .tool-call-icon { color: var(--accent); opacity: 1; }
 
 .tool-call-verb {
   flex: 0 0 auto;
