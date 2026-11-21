@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from uuid import uuid4
 
+from .models import parse_reasoning_levels
 from .pollinations import _event, chat_to_responses, response_as_sse, responses_to_chat
 from .sse import collect_completed_response_from_sse, iterate_server_sent_events
 
@@ -26,6 +27,11 @@ MODEL_ID_LIMIT = 200 - len(MODEL_PREFIX) - 32 - 1
 CATALOG_TTL = 300
 CATALOG_MAX_BYTES = 4 * 1024 * 1024
 CUSTOM_REASONING_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra")
+ModelCatalog = dict[str, tuple[str, ...] | None]
+
+# Some OpenAI-compatible endpoints publish only model IDs.
+# https://huggingface.co/Qwen/Qwen3.8-27B#api-usage
+_DOCUMENTED_EFFORTS = {"qwen3.8-27b": ("low", "medium", "xhigh")}
 
 
 def is_custom_model(model: Any) -> bool:
@@ -107,6 +113,23 @@ def _parse_model_efforts(value: Any) -> dict[str, tuple[str, ...]]:
     return parsed
 
 
+def _catalog_efforts(entry: dict[str, Any]) -> tuple[str, ...] | None:
+    capabilities = entry.get("capabilities")
+    reasoning = capabilities.get("reasoning") if isinstance(capabilities, dict) else None
+    if reasoning is False or (isinstance(reasoning, dict) and reasoning.get("supported") is False):
+        return ()
+    candidates = [entry.get(key) for key in (
+        "supported_reasoning_levels", "supported_reasoning_efforts", "reasoning_efforts",
+    )]
+    if isinstance(reasoning, dict):
+        candidates.extend((reasoning.get("efforts"), reasoning.get("effort")))
+    for value in candidates:
+        if isinstance(value, list):
+            return tuple(effort for effort in parse_reasoning_levels(value)
+                         if effort in CUSTOM_REASONING_EFFORTS)
+    return None
+
+
 @dataclass(frozen=True)
 class CustomProvider:
     name: str
@@ -152,7 +175,7 @@ class CustomProvider:
         except (URLError, OSError, ValueError):
             raise RuntimeError(f"Could not reach {self.name}.") from None
 
-    def discover(self) -> list[str]:
+    def discover(self) -> ModelCatalog:
         with self.request("/models") as response:
             raw = response.read(CATALOG_MAX_BYTES + 1)
         if len(raw) > CATALOG_MAX_BYTES:
@@ -164,18 +187,18 @@ class CustomProvider:
         rows = payload.get("data") if isinstance(payload, dict) else None
         if not isinstance(rows, list):
             raise RuntimeError(f"{self.name} did not return an OpenAI-compatible model list.")
-        return list(dict.fromkeys(
-            entry["id"] for entry in rows if isinstance(entry, dict)
+        return {
+            entry["id"]: _catalog_efforts(entry) for entry in rows if isinstance(entry, dict)
             and _is_model_id(entry.get("id"))
             and entry.get("type") in (None, "model", "language", "chat", "text")
-        ))
+        }
 
 
 class CustomProviders:
     def __init__(self, path: Path) -> None:
         self._path = path
         self._lock = threading.Lock()
-        self._catalog_cache: dict[str, tuple[float, list[str]]] = {}
+        self._catalog_cache: dict[str, tuple[float, ModelCatalog, str]] = {}
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             self._providers = {
@@ -246,27 +269,29 @@ class CustomProviders:
             self._persist(providers)
             self._catalog_cache.pop(provider_id, None)
 
+    def _discovered_models(self, key: str, provider: CustomProvider) -> tuple[ModelCatalog, str]:
+        with self._lock:
+            if self._providers.get(key) is not provider:
+                return {}, ""
+            cached = self._catalog_cache.get(key)
+        if cached and monotonic() < cached[0]:
+            return cached[1], cached[2]
+        try:
+            models, error, retry_in = provider.discover(), "", CATALOG_TTL
+        except (RuntimeError, OSError, HTTPException) as failure:
+            models, error, retry_in = cached[1] if cached else {}, str(failure), 30
+        with self._lock:
+            if self._providers.get(key) is provider:
+                self._catalog_cache[key] = (monotonic() + retry_in, models, error)
+        return models, error
+
     def _catalog_for(self, entry: tuple[str, CustomProvider]) -> tuple[dict[str, str], str]:
         key, provider = entry
-        with self._lock:
-            cached = self._catalog_cache.get(key)
-        if provider.model_ids:
-            models = provider.model_ids
-        elif cached and monotonic() - cached[0] < CATALOG_TTL:
-            models = cached[1]
-        else:
-            try:
-                models = provider.discover()
-            except (RuntimeError, OSError, HTTPException) as error:
-                return (
-                    {f"{MODEL_PREFIX}{key}/{model}": f"{model} · {provider.name}"
-                     for model in (cached[1] if cached else [])},
-                    str(error),
-                )
-            with self._lock:
-                if self._providers.get(key) == provider:
-                    self._catalog_cache[key] = (monotonic(), models)
-        return {f"{MODEL_PREFIX}{key}/{model}": f"{model} · {provider.name}" for model in models}, ""
+        discovered, error = self._discovered_models(key, provider)
+        models = provider.model_ids or discovered
+        labels = {f"{MODEL_PREFIX}{key}/{model}": f"{model} · {provider.name}" for model in models}
+        # Explicit model lists still work when an endpoint does not offer /models.
+        return labels, "" if provider.model_ids else error
 
     def catalog(self) -> tuple[dict[str, str], list[str]]:
         with self._lock:
@@ -281,24 +306,33 @@ class CustomProviders:
                     errors.append(error)
         return models, errors
 
-    def _resolve_model(self, model: str) -> tuple[CustomProvider | None, str]:
+    def _resolve_model(self, model: str) -> tuple[str, CustomProvider | None, str]:
         provider_id, _, upstream_model = model.removeprefix(MODEL_PREFIX).partition("/")
         with self._lock:
-            return self._providers.get(provider_id), upstream_model
+            return provider_id, self._providers.get(provider_id), upstream_model
+
+    def _efforts_for(self, key: str, provider: CustomProvider, model: str) -> tuple[str, ...]:
+        if model in provider.model_efforts:
+            return provider.model_efforts[model]
+        discovered, _ = self._discovered_models(key, provider)
+        efforts = discovered.get(model)
+        if efforts is not None:
+            return efforts
+        return _DOCUMENTED_EFFORTS.get(model.casefold().removeprefix("qwen/"), ())
 
     def reasoning_efforts(self, model: str) -> tuple[str, ...]:
-        provider, upstream_model = self._resolve_model(model)
-        return provider.model_efforts.get(upstream_model, ()) if provider else ()
+        key, provider, upstream_model = self._resolve_model(model)
+        return self._efforts_for(key, provider, upstream_model) if provider else ()
 
     def send(self, body: dict[str, Any], *, stream: bool):
         model = body["model"]
-        provider, upstream_model = self._resolve_model(model)
+        key, provider, upstream_model = self._resolve_model(model)
         if not provider or not upstream_model:
             raise RuntimeError("This custom provider is unavailable. Select another model or re-add the provider.")
         request_body = {key: value for key, value in body.items() if key != "reasoning"}
         reasoning = body.get("reasoning")
         effort = reasoning.get("effort") if isinstance(reasoning, dict) else None
-        if effort in provider.model_efforts.get(upstream_model, ()):
+        if effort in CUSTOM_REASONING_EFFORTS and effort in self._efforts_for(key, provider, upstream_model):
             request_body["reasoning"] = {"effort": effort}
         if provider.api_path == "/responses":
             return _send_responses(provider, request_body, upstream_model, stream)

@@ -136,6 +136,8 @@ class Runtime:
     # -- conversations -------------------------------------------------------
 
     def normalize_model_effort(self, model: str, effort: Any) -> str:
+        if not effort:
+            return ""
         if is_custom_model(model):
             allowed = self.session.custom_providers.reasoning_efforts(model)
             return normalize_effort(effort, allowed) if allowed else ""

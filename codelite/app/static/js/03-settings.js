@@ -437,6 +437,7 @@ function editCustomProvider(provider = null) {
   $("custom-provider-models").value = provider?.model_ids.join("\n") || "";
   $("custom-provider-thinking").value = Object.entries(provider?.model_efforts || {})
     .map(([model, efforts]) => `${model} = ${efforts.join(", ")}`).join("\n");
+  $("custom-provider-thinking-options").open = false;
   $("custom-provider-key-hint").hidden = !provider?.api_key_configured;
   $("custom-provider-cancel").hidden = !provider;
   $("custom-provider-status").textContent = "";

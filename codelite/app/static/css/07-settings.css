@@ -218,6 +218,7 @@
 }
 .settings-panel .field { margin-top: 12px; }
 #custom-provider-form .field { display: block; margin-bottom: 5px; }
+#custom-provider-form summary { margin-top: 12px; color: var(--text-dim); cursor: pointer; }
 #custom-provider-form input { width: 100%; color: var(--text); }
 #custom-provider-form button[hidden] { display: none; }
 #custom-provider-list .settings-row + .settings-row {

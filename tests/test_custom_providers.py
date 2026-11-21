@@ -48,7 +48,10 @@ def test_multiple_providers_discover_route_and_keep_keys_private(tmp_path, monke
     assert b"first-key" not in settings.data and b"second-key" not in settings.data
     assert client.get("/api/auth").json["custom_providers"] is True
     assert set(client.get("/api/models").json["models"]) == set(models)
-    assert calls == [("https://monday.example/v1/models", "Bearer first-key", None)]
+    assert set(calls) == {
+        ("https://monday.example/v1/models", "Bearer first-key", None),
+        ("http://127.0.0.1:8000/v1/models", "Bearer second-key", None),
+    }
     session.use_pollinations_free = True
     for model in models:
         assert session.send_responses({"model": model, "input": "Hello"})["output_text"] == "OK"
@@ -77,17 +80,18 @@ def test_custom_model_effort_reaches_the_endpoint(tmp_path, monkeypatch, path, e
     runtime = app.config["runtime"]
     provider = client.post("/api/settings/custom-providers", json={
         "name": "IDE3", "base_url": f"https://example.test/v1{path}",
-        "model_ids": ["team/code", "team/plain"], "model_efforts": {"team/code": ["low", "xhigh"]},
+        "model_ids": ["team/code", "team/plain"],
     }).json
     prefix = f"custom/{provider['id']}/"
     model = prefix + "team/code"
-    capabilities = client.get("/api/models").json["capabilities"]
-    assert capabilities[model]["efforts"] == ["low", "xhigh"]
-    assert capabilities[prefix + "team/plain"]["efforts"] == []
-    assert custom.CustomProviders(tmp_path / "custom-providers.json").reasoning_efforts(model) == ("low", "xhigh")
     bodies = []
 
-    def reply(_provider, requested_path, body):
+    def reply(_provider, requested_path, body=None):
+        if requested_path == "/models":
+            return provider_response({"data": [
+                {"id": "team/code", "supported_reasoning_levels": [{"effort": "low"}, {"effort": "xhigh"}]},
+                {"id": "team/plain"},
+            ]})
         assert requested_path == path
         bodies.append(body)
         if path == "/responses":
@@ -95,6 +99,10 @@ def test_custom_model_effort_reaches_the_endpoint(tmp_path, monkeypatch, path, e
         return provider_response({"choices": [{"message": {"content": "Done"}}]})
 
     monkeypatch.setattr(custom.CustomProvider, "request", reply)
+    capabilities = client.get("/api/models").json["capabilities"]
+    assert capabilities[model]["efforts"] == ["low", "xhigh"]
+    assert capabilities[prefix + "team/plain"]["efforts"] == []
+    assert custom.CustomProviders(tmp_path / "custom-providers.json").reasoning_efforts(model) == ("low", "xhigh")
     for requested, expected in [("xhigh", expected_thinking), ("high", {}), ("", {})]:
         conversation = runtime.create_conversation(str(tmp_path), model, reasoning_effort=requested)
         runner = AgentRunner(
@@ -111,6 +119,34 @@ def test_custom_model_effort_reaches_the_endpoint(tmp_path, monkeypatch, path, e
     })
     assert response.status_code == 400
     assert runtime.session.custom_providers.reasoning_efforts(model) == ("low", "xhigh")
+
+
+def test_custom_model_reasoning_fallback_uses_documented_levels(tmp_path, monkeypatch):
+    providers = custom.CustomProviders(tmp_path / "providers.json")
+    model = "Qwen/Qwen3.8-27B"
+    advertised = {
+        "id": model, "capabilities": {"reasoning": {"supported": True, "effort": ["low", "medium"]}},
+    }
+    rows = [{"id": model}, {"id": "custom-unknown"}]
+
+    def reply(_provider, path, body=None):
+        assert path == "/models" and body is None
+        return provider_response({"data": rows})
+
+    monkeypatch.setattr(custom.CustomProvider, "request", reply)
+    options = {"name": "IDE3", "base_url": "https://example.test/v1"}
+    provider = providers.save(options)
+    prefix = f"custom/{provider['id']}/"
+    assert providers.reasoning_efforts(prefix + model) == ("low", "medium", "xhigh")
+    assert providers.reasoning_efforts(prefix + "custom-unknown") == ()
+
+    rows[0] = advertised
+    providers.save(options, provider["id"])
+    assert providers.reasoning_efforts(prefix + model) == ("low", "medium")
+
+    advertised["capabilities"]["reasoning"]["supported"] = False
+    providers.save(options, provider["id"])
+    assert providers.reasoning_efforts(prefix + model) == ()
 
 
 def test_streaming_tool_calls_are_assembled(tmp_path, monkeypatch):

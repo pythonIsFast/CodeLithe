@@ -156,7 +156,7 @@ def _optional_int(value: Any) -> int | None:
     return int(value) if value > 0 else None
 
 
-def _reasoning_levels(value: Any) -> tuple[str, ...]:
+def parse_reasoning_levels(value: Any) -> tuple[str, ...]:
     """Pull the effort names out of the catalog's list of level objects."""
     if not isinstance(value, list):
         return ()
@@ -196,7 +196,7 @@ def _to_model_info(value: Any) -> CodexModelInfo | None:
         context_window=_optional_int(value.get("context_window")),
         max_context_window=_optional_int(value.get("max_context_window")),
         display_name=_optional_str(value.get("display_name")),
-        supported_reasoning_levels=_reasoning_levels(
+        supported_reasoning_levels=parse_reasoning_levels(
             value.get("supported_reasoning_levels")
         ),
         service_tiers=_service_tiers(value.get("service_tiers")),
