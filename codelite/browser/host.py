@@ -124,9 +124,11 @@ class BrowserSession:
         self,
         window: WindowLike,
         screenshot_fn: Callable[..., bytes] | None = None,
+        evaluate_fn: Callable[[str], Any] | None = None,
     ) -> None:
         self.window = window
         self._screenshot_fn = screenshot_fn or _unsupported_screenshot
+        self._evaluate_fn = evaluate_fn or window.evaluate_js
 
     def navigate(self, url: str, timeout: float = 20.0) -> dict[str, Any]:
         target = url.strip()
@@ -141,7 +143,7 @@ class BrowserSession:
         if loaded is not None:
             loaded.clear()
         if target in ("back", "forward"):
-            self.window.evaluate_js(f"history.{target}();")
+            self.evaluate(f"history.{target}();")
         else:
             self.window.load_url(target)
         if loaded is not None:
@@ -150,8 +152,8 @@ class BrowserSession:
         else:
             self._wait_for_load(timeout)
         return {
-            "url": self.window.evaluate_js("location.href"),
-            "title": self.window.evaluate_js("document.title"),
+            "url": self.evaluate("location.href"),
+            "title": self.evaluate("document.title"),
         }
 
     def _wait_for_load(self, timeout: float) -> None:
@@ -161,14 +163,14 @@ class BrowserSession:
         deadline = time.monotonic() + max(0.0, timeout)
         while time.monotonic() < deadline:
             try:
-                if self.window.evaluate_js("document.readyState") == "complete":
+                if self.evaluate("document.readyState") == "complete":
                     return
             except Exception:  # noqa: BLE001 - the page may not be ready to eval yet
                 pass
             time.sleep(0.15)
 
     def snapshot(self, max_chars: int = 20_000) -> dict[str, Any]:
-        data = _parse_js_result(self.window.evaluate_js(_SNAPSHOT_JS))
+        data = _parse_js_result(self.evaluate(_SNAPSHOT_JS))
         elements = data.get("elements") or []
         kept: list[str] = []
         used = 0
@@ -192,7 +194,7 @@ class BrowserSession:
   return {{ok: true}};
 }})()
 """
-        result = _parse_js_result(self.window.evaluate_js(script))
+        result = _parse_js_result(self.evaluate(script))
         if not result.get("ok"):
             raise BrowserActionError(result.get("error") or f"Could not click {ref}.")
 
@@ -216,12 +218,12 @@ class BrowserSession:
   return {{ok: true}};
 }})()
 """
-        result = _parse_js_result(self.window.evaluate_js(script))
+        result = _parse_js_result(self.evaluate(script))
         if not result.get("ok"):
             raise BrowserActionError(result.get("error") or f"Could not fill {ref}.")
 
     def evaluate(self, script: str) -> Any:
-        return self.window.evaluate_js(script)
+        return self._evaluate_fn(script)
 
     def screenshot(self, *, full_page: bool = False) -> dict[str, str]:
         png_bytes = self._screenshot_fn(self.window, full_page=full_page)
@@ -297,10 +299,43 @@ def _screenshot_backend() -> Callable[..., bytes] | None:
     return capture_window_png if screenshots_available() else None
 
 
-def _evaluate_gtk_js(view: Any, script: str) -> Any:
-    """Complete the GTK bridge even when WebKit rejects the evaluation."""
+def _evaluate_browser_js(window: Any, script: str) -> Any:
+    gui = window.gui
+    if getattr(gui, "renderer", None) == "gtkwebkit2":
+        widget = gui.BrowserView.instances[window.uid].webview
+        return _evaluate_gtk_js(widget, script)
+    return window.evaluate_js(script)
+
+
+def _evaluate_gtk_js(widget: Any, script: str) -> Any:
+    """Evaluate directly in the current document, even during a redirect."""
     from gi.repository import GLib
 
+    # pywebview's public evaluator uses pywebview._stringify, which is only
+    # injected after a page finishes loading. A redirect replaces that global.
+    wrapped = f"""
+(() => {{
+    try {{
+        const value = (0, eval)({json.dumps(script)});
+        const ancestors = [];
+        return JSON.stringify({{value: value ?? null}}, function (_, item) {{
+            if (item === globalThis) return 'Window';
+            if (item instanceof Node) return item.outerHTML ?? item.textContent;
+            if (item instanceof NodeList || item instanceof HTMLCollection) return Array.from(item);
+            if (typeof item === 'bigint') return item.toString();
+            if (item !== null && typeof item === 'object') {{
+                while (ancestors.length && ancestors[ancestors.length - 1] !== this) ancestors.pop();
+                if (ancestors.includes(item)) return '[Circular Reference]';
+                ancestors.push(item);
+            }}
+            return item;
+        }});
+    }} catch (failure) {{
+        return JSON.stringify({{error: String(failure)}});
+    }}
+}})()
+"""
+    modern_api = hasattr(widget, "evaluate_javascript")
     done = threading.Event()
     value: str | None = None
     error: Exception | None = None
@@ -308,7 +343,10 @@ def _evaluate_gtk_js(view: Any, script: str) -> Any:
     def finish(widget: Any, task: Any, _data: Any = None) -> None:
         nonlocal value, error
         try:
-            result = widget.evaluate_javascript_finish(task)
+            result = (
+                widget.evaluate_javascript_finish(task) if modern_api
+                else widget.run_javascript_finish(task).get_js_value()
+            )
             value = result.to_string() if result is not None else None
         except Exception as failure:  # noqa: BLE001 - the caller must be woken up
             error = failure
@@ -318,7 +356,10 @@ def _evaluate_gtk_js(view: Any, script: str) -> Any:
     def start() -> bool:
         nonlocal error
         try:
-            view.webview.evaluate_javascript(script, -1, None, None, None, finish)
+            if modern_api:
+                widget.evaluate_javascript(wrapped, -1, None, None, None, finish)
+            else:
+                widget.run_javascript(wrapped, None, finish)
         except Exception as failure:  # noqa: BLE001 - the caller must be woken up
             error = failure
             done.set()
@@ -328,9 +369,10 @@ def _evaluate_gtk_js(view: Any, script: str) -> Any:
     done.wait()  # The parent enforces the per-action deadline if WebKit stalls.
     if error is not None:
         raise BrowserActionError(f"WebKit could not evaluate JavaScript: {error}") from None
-    if value is None or value in ("undefined", "null"):
-        return None
-    return json.loads(value) if value else ""
+    response = json.loads(value) if value else {}
+    if "error" in response:
+        raise BrowserActionError(response["error"])
+    return response.get("value")
 
 
 def _prepare_gtk_browser() -> None:
@@ -341,12 +383,6 @@ def _prepare_gtk_browser() -> None:
         return  # pywebview can choose a different backend.
 
     show = BrowserView.show
-    evaluate = BrowserView.evaluate_js
-
-    def evaluate_with_completion(view: Any, script: str) -> Any:
-        if not hasattr(view.webview, "evaluate_javascript"):
-            return evaluate(view, script)
-        return _evaluate_gtk_js(view, script)
 
     def show_in_background(view: Any) -> None:
         window = view.window
@@ -383,9 +419,8 @@ def _prepare_gtk_browser() -> None:
         surface.set_pass_through(True)
         show(view)
 
-    # The window and bridge workarounds only apply in this child process.
+    # The window workaround only applies in this child process.
     BrowserView.show = show_in_background
-    BrowserView.evaluate_js = evaluate_with_completion
 
 
 def main() -> None:  # pragma: no cover - exercised manually, needs a real display
@@ -399,7 +434,10 @@ def main() -> None:  # pragma: no cover - exercised manually, needs a real displ
     window = webview.create_window(
         "codelite-browser", "about:blank", width=1, height=1, x=0, y=0
     )
-    session = BrowserSession(window, screenshot_fn=_screenshot_backend())
+    session = BrowserSession(
+        window, screenshot_fn=_screenshot_backend(),
+        evaluate_fn=lambda script: _evaluate_browser_js(window, script),
+    )
 
     def serve_when_loaded() -> None:
         # webview.start() launches its callback just before creating the native

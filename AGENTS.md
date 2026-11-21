@@ -259,7 +259,8 @@ natives OS-Webview als Fenster (kein Electron). Apache-2.0, UI-Texte Englisch.
   vor dem ersten Anzeigen transparent und klickdurchlässig gemacht wird.
   Der GTK-Viewport ist 1280×720. X11 ohne Compositor begrenzt nur den
   sichtbaren Teil des nativen Fensters auf 1×1 Pixel.
-  `BrowserSession` (navigate/snapshot mit
+  Browser-JavaScript läuft unter GTK direkt in WebKit, damit es auch
+  während Weiterleitungen verfügbar ist. `BrowserSession` (navigate/snapshot mit
   `data-cl-ref`-Refs, max 400 Elemente, click/fill/evaluate/screenshot/
   reset), JSON-Lines über stdin/stdout, `dispatch()` wirft nie.
 - **client.py** – `BrowserClient`: Lazy-Start (gefrorren → eigenes Binary
