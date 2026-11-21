@@ -102,18 +102,40 @@ def test_streaming_tool_calls_are_assembled(tmp_path, monkeypatch):
     assert result["output_text"] == "Done"
 
 
-def test_http_400_explains_provider_error_without_echoing_key(monkeypatch):
+@pytest.mark.parametrize("payload", [
+    {"error": {"message": "Invalid tool history. Key: test-secret"}},
+    {"detail": "Invalid tool history. Key: test-secret"},
+])
+def test_http_400_explains_provider_error_without_echoing_key(monkeypatch, payload):
     provider = custom.CustomProvider("IDE3", "https://example.test/v1", "test-secret", ())
 
     class RejectRequest:
         def open(self, request, timeout):
-            body = provider_response({"error": {"message": "Invalid tool history. Key: test-secret"}})
+            body = provider_response(payload)
             raise HTTPError(request.full_url, 400, "Bad Request", body.headers, body)
 
     monkeypatch.setattr(custom, "build_opener", lambda *_: RejectRequest())
     with pytest.raises(RuntimeError, match=r"IDE3 returned HTTP 400\. Invalid tool history") as error:
         provider.request("/chat/completions", {"model": "code"})
     assert "test-secret" not in str(error.value)
+
+
+def test_tool_only_assistant_message_sends_empty_content(tmp_path, monkeypatch):
+    providers = custom.CustomProviders(tmp_path / "providers.json")
+    provider = providers.save({"name": "IDE3", "base_url": "https://example.test/v1"})
+
+    def reply(_provider, _path, body):
+        assistant, tool = body["messages"]
+        assert assistant["content"] == ""
+        assert assistant["tool_calls"][0]["id"] == tool["tool_call_id"] == "call-1"
+        return provider_response({"choices": [{"message": {"content": "Done"}}]})
+
+    monkeypatch.setattr(custom.CustomProvider, "request", reply)
+    result = providers.send({"model": f"custom/{provider['id']}/code", "input": [
+        {"type": "function_call", "call_id": "call-1", "name": "read_file", "arguments": "{}"},
+        {"type": "function_call_output", "call_id": "call-1", "output": "Synthetic tool output"},
+    ]}, stream=False)
+    assert result["output_text"] == "Done"
 
 
 def test_full_responses_endpoint_uses_native_stream(tmp_path, monkeypatch):

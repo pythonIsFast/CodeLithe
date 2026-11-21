@@ -43,7 +43,9 @@ def _request_error_detail(error: HTTPError, api_key: str) -> str:
         payload = json.loads(error.read(8192))
     except (ValueError, OSError, HTTPException):
         return ""
-    detail = (payload.get("error") or payload.get("message")) if isinstance(payload, dict) else None
+    if not isinstance(payload, dict):
+        return ""
+    detail = payload.get("error") or payload.get("message") or payload.get("detail")
     if isinstance(detail, dict):
         detail = detail.get("message")
     if not isinstance(detail, str):

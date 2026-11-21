@@ -69,7 +69,10 @@ def responses_to_chat(
         if merge_assistant_calls and prior and prior["role"] == "assistant" and "tool_calls" not in prior:
             prior["tool_calls"] = list(pending_calls)
         else:
-            messages.append({"role": "assistant", "content": None, "tool_calls": list(pending_calls)})
+            # Some OpenAI-compatible servers expect a string even when the
+            # assistant emits only tool calls.
+            content = "" if merge_assistant_calls else None
+            messages.append({"role": "assistant", "content": content, "tool_calls": list(pending_calls)})
         pending_calls.clear()
 
     input_items = body.get("input")
