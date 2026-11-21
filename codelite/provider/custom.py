@@ -31,7 +31,13 @@ ModelCatalog = dict[str, tuple[str, ...] | None]
 
 # Some OpenAI-compatible endpoints publish only model IDs.
 # https://huggingface.co/Qwen/Qwen3.8-27B#api-usage
-_DOCUMENTED_EFFORTS = {"qwen3.8-27b": ("low", "medium", "xhigh")}
+# https://huggingface.co/zai-org/GLM-5.3
+_DOCUMENTED_EFFORTS = {
+    "qwen/qwen3.8-27b": ("low", "medium", "xhigh"),
+    "qwen3.8-27b": ("low", "medium", "xhigh"),
+    "zai-org/glm-5.3": ("low", "high", "max"),
+    "glm-5.3": ("low", "high", "max"),
+}
 
 
 def is_custom_model(model: Any) -> bool:
@@ -318,7 +324,7 @@ class CustomProviders:
         efforts = discovered.get(model)
         if efforts is not None:
             return efforts
-        return _DOCUMENTED_EFFORTS.get(model.casefold().removeprefix("qwen/"), ())
+        return _DOCUMENTED_EFFORTS.get(model.casefold(), ())
 
     def reasoning_efforts(self, model: str) -> tuple[str, ...]:
         key, provider, upstream_model = self._resolve_model(model)

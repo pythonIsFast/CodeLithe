@@ -121,9 +121,14 @@ def test_custom_model_effort_reaches_the_endpoint(tmp_path, monkeypatch, path, e
     assert runtime.session.custom_providers.reasoning_efforts(model) == ("low", "xhigh")
 
 
-def test_custom_model_reasoning_fallback_uses_documented_levels(tmp_path, monkeypatch):
+@pytest.mark.parametrize("model, documented", [
+    ("Qwen/Qwen3.8-27B", ("low", "medium", "xhigh")),
+    ("qwen3.8-27b", ("low", "medium", "xhigh")),
+    ("zai-org/GLM-5.3", ("low", "high", "max")),
+    ("glm-5.3", ("low", "high", "max")),
+])
+def test_custom_model_reasoning_fallback_uses_documented_levels(tmp_path, monkeypatch, model, documented):
     providers = custom.CustomProviders(tmp_path / "providers.json")
-    model = "Qwen/Qwen3.8-27B"
     advertised = {
         "id": model, "capabilities": {"reasoning": {"supported": True, "effort": ["low", "medium"]}},
     }
@@ -137,7 +142,7 @@ def test_custom_model_reasoning_fallback_uses_documented_levels(tmp_path, monkey
     options = {"name": "IDE3", "base_url": "https://example.test/v1"}
     provider = providers.save(options)
     prefix = f"custom/{provider['id']}/"
-    assert providers.reasoning_efforts(prefix + model) == ("low", "medium", "xhigh")
+    assert providers.reasoning_efforts(prefix + model) == documented
     assert providers.reasoning_efforts(prefix + "custom-unknown") == ()
 
     rows[0] = advertised
