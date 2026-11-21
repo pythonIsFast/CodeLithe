@@ -435,6 +435,8 @@ function editCustomProvider(provider = null) {
   $("custom-provider-name").value = provider?.name || "";
   $("custom-provider-url").value = provider?.base_url || "";
   $("custom-provider-models").value = provider?.model_ids.join("\n") || "";
+  $("custom-provider-thinking").value = Object.entries(provider?.model_efforts || {})
+    .map(([model, efforts]) => `${model} = ${efforts.join(", ")}`).join("\n");
   $("custom-provider-key-hint").hidden = !provider?.api_key_configured;
   $("custom-provider-cancel").hidden = !provider;
   $("custom-provider-status").textContent = "";
@@ -521,6 +523,14 @@ async function saveCustomProvider(event) {
   const status = $("custom-provider-status");
   controls.forEach((control) => { control.disabled = true; });
   try {
+    const lines = $("custom-provider-thinking").value.split("\n").map((line) => line.trim()).filter(Boolean);
+    payload.model_efforts = Object.fromEntries(lines.map((line) => {
+      const separator = line.lastIndexOf("=");
+      if (separator < 1) throw new Error("Use model-id = low, medium for each thinking entry.");
+      const model = line.slice(0, separator).trim();
+      const efforts = line.slice(separator + 1).split(",").map((effort) => effort.trim().toLowerCase());
+      return [model, efforts];
+    }));
     const path = "/api/settings/custom-providers";
     await api(id ? `${path}/${id}` : path, {
       method: id ? "PUT" : "POST",

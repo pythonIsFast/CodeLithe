@@ -92,7 +92,12 @@ class Session:
         rather than offering a level the model would reject.
         """
         if is_custom_model(model):
-            return {"efforts": [], "default_effort": "", "fast": False, "flex": False}
+            return {
+                "efforts": list(self.custom_providers.reasoning_efforts(model)),
+                "default_effort": "",
+                "fast": False,
+                "flex": False,
+            }
         if is_go_model(model):
             return {
                 **self.opencode_go.reasoning_capabilities(model),

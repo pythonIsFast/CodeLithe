@@ -105,6 +105,12 @@
               <label class="field" for="custom-provider-models">Model IDs</label>
               <textarea id="custom-provider-models" rows="3" placeholder="Leave empty to load models from the endpoint"></textarea>
               <p class="account-detail">Enter one model ID per line to use a specific list.</p>
+              <label class="field" for="custom-provider-thinking">Thinking levels by model</label>
+              <textarea id="custom-provider-thinking" rows="2" placeholder="model-id = low, medium, xhigh"
+                        aria-describedby="custom-provider-thinking-help"></textarea>
+              <p class="account-detail" id="custom-provider-thinking-help">
+                Enter one model per line with the levels your endpoint accepts. Unlisted models use Auto.
+              </p>
               <div class="settings-block-actions">
                 <button type="button" class="btn" id="custom-provider-cancel" hidden>Cancel edit</button>
                 <button type="submit" class="btn primary">Save provider</button>

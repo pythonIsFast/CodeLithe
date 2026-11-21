@@ -38,6 +38,7 @@ from ..db.store import Conversation, Store
 from ..permission.manager import PermissionManager
 from ..permission.modes import Mode
 from ..provider.config import ProviderConfig
+from ..provider.custom import is_custom_model
 from ..provider.opencode_go import GO_REASONING_EFFORTS, is_go_model
 from ..provider.pollinations import POLLINATIONS_MODEL
 from ..provider.session import Session
@@ -135,6 +136,9 @@ class Runtime:
     # -- conversations -------------------------------------------------------
 
     def normalize_model_effort(self, model: str, effort: Any) -> str:
+        if is_custom_model(model):
+            allowed = self.session.custom_providers.reasoning_efforts(model)
+            return normalize_effort(effort, allowed) if allowed else ""
         return normalize_effort(effort, GO_REASONING_EFFORTS if is_go_model(model) else None)
 
     def create_conversation(

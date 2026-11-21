@@ -8,7 +8,7 @@ import re
 import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from http.client import HTTPException
 from pathlib import Path
 from time import monotonic
@@ -25,6 +25,7 @@ MODEL_PREFIX = "custom/"
 MODEL_ID_LIMIT = 200 - len(MODEL_PREFIX) - 32 - 1
 CATALOG_TTL = 300
 CATALOG_MAX_BYTES = 4 * 1024 * 1024
+CUSTOM_REASONING_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra")
 
 
 def is_custom_model(model: Any) -> bool:
@@ -93,6 +94,19 @@ def _is_model_id(value: Any) -> bool:
     )
 
 
+def _parse_model_efforts(value: Any) -> dict[str, tuple[str, ...]]:
+    if not isinstance(value, dict):
+        raise ValueError("Enter thinking levels by model ID.")
+    parsed = {}
+    for model, efforts in value.items():
+        if not _is_model_id(model) or not isinstance(efforts, (list, tuple)) or not efforts:
+            raise ValueError("Enter a valid model ID and at least one thinking level per entry.")
+        if any(effort not in CUSTOM_REASONING_EFFORTS for effort in efforts):
+            raise ValueError(f"Unknown thinking level for {model}. Use {', '.join(CUSTOM_REASONING_EFFORTS)}.")
+        parsed[model] = tuple(dict.fromkeys(efforts))
+    return parsed
+
+
 @dataclass(frozen=True)
 class CustomProvider:
     name: str
@@ -100,6 +114,7 @@ class CustomProvider:
     api_key: str
     model_ids: tuple[str, ...]
     api_path: str = "/chat/completions"
+    model_efforts: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     def public(self) -> dict[str, Any]:
         return {
@@ -107,6 +122,7 @@ class CustomProvider:
             "base_url": self.base_url + ("/responses" if self.api_path == "/responses" else ""),
             "api_key_configured": bool(self.api_key),
             "model_ids": list(self.model_ids),
+            "model_efforts": {model: list(efforts) for model, efforts in self.model_efforts.items()},
         }
 
     def request(self, path: str, body: dict[str, Any] | None = None):
@@ -166,6 +182,7 @@ class CustomProviders:
                 key: CustomProvider(
                     row["name"], row["base_url"], row["api_key"], tuple(row["model_ids"]),
                     row.get("api_path", "/chat/completions"),
+                    _parse_model_efforts(row.get("model_efforts", {})),
                 )
                 for key, row in data.items()
             }
@@ -211,8 +228,11 @@ class CustomProviders:
                 not 33 <= ord(char) <= 126 for char in key.strip()
             ):
                 raise ValueError("Enter a valid API key without spaces or control characters.")
+            same_endpoint = existing and (existing.base_url, existing.api_path) == (base_url, api_path)
+            default_efforts = existing.model_efforts if same_endpoint else {}
             provider = CustomProvider(
                 name.strip(), base_url, key.strip(), tuple(dict.fromkeys(model_ids)), api_path,
+                _parse_model_efforts(payload.get("model_efforts", default_efforts)),
             )
             provider_id = provider_id or uuid4().hex
             self._persist({**self._providers, provider_id: provider})
@@ -261,20 +281,30 @@ class CustomProviders:
                     errors.append(error)
         return models, errors
 
-    def send(self, body: dict[str, Any], *, stream: bool):
-        model = body["model"]
+    def _resolve_model(self, model: str) -> tuple[CustomProvider | None, str]:
         provider_id, _, upstream_model = model.removeprefix(MODEL_PREFIX).partition("/")
         with self._lock:
-            provider = self._providers.get(provider_id)
+            return self._providers.get(provider_id), upstream_model
+
+    def reasoning_efforts(self, model: str) -> tuple[str, ...]:
+        provider, upstream_model = self._resolve_model(model)
+        return provider.model_efforts.get(upstream_model, ()) if provider else ()
+
+    def send(self, body: dict[str, Any], *, stream: bool):
+        model = body["model"]
+        provider, upstream_model = self._resolve_model(model)
         if not provider or not upstream_model:
             raise RuntimeError("This custom provider is unavailable. Select another model or re-add the provider.")
+        request_body = {key: value for key, value in body.items() if key != "reasoning"}
+        reasoning = body.get("reasoning")
+        effort = reasoning.get("effort") if isinstance(reasoning, dict) else None
+        if effort in provider.model_efforts.get(upstream_model, ()):
+            request_body["reasoning"] = {"effort": effort}
         if provider.api_path == "/responses":
-            return _send_responses(provider, body, upstream_model, stream)
+            return _send_responses(provider, request_body, upstream_model, stream)
         request = responses_to_chat(
-            body, model=upstream_model, include_images=True, merge_assistant_calls=True,
+            request_body, model=upstream_model, include_images=True, merge_assistant_calls=True,
         )
-        # Standard model lists don't advertise supported reasoning levels.
-        request.pop("reasoning_effort", None)
         request["stream"] = stream
         if stream:
             return _stream(provider, request, model)
@@ -284,7 +314,6 @@ class CustomProviders:
 
 def _send_responses(provider: CustomProvider, body: dict[str, Any], model: str, stream: bool):
     request = {**body, "model": model, "store": False, "stream": stream}
-    request.pop("reasoning", None)
     request.pop("service_tier", None)
     if isinstance(request.get("input"), list):
         request["input"] = [

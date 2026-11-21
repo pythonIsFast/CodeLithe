@@ -5,8 +5,11 @@ from urllib.error import HTTPError
 
 import pytest
 
+from codelite.agent.loop import AgentRunner
 from codelite.app.server import create_app
 from codelite.config import AppConfig
+from codelite.permission.manager import PermissionManager
+from codelite.permission.modes import Mode
 from codelite.provider import custom
 from codelite.provider.sse import collect_completed_response_from_sse
 
@@ -61,6 +64,53 @@ def test_multiple_providers_discover_route_and_keep_keys_private(tmp_path, monke
     })
     assert updated.json["api_key_configured"] is False
     assert client.delete(f"/api/settings/custom-providers/{monday['id']}").status_code == 200
+
+
+@pytest.mark.parametrize("path, expected_thinking", [
+    ("/chat/completions", {"reasoning_effort": "xhigh"}),
+    ("/responses", {"reasoning": {"effort": "xhigh"}}),
+])
+def test_custom_model_effort_reaches_the_endpoint(tmp_path, monkeypatch, path, expected_thinking):
+    config = AppConfig(data_dir=tmp_path)
+    app = create_app(config)
+    client = app.test_client()
+    runtime = app.config["runtime"]
+    provider = client.post("/api/settings/custom-providers", json={
+        "name": "IDE3", "base_url": f"https://example.test/v1{path}",
+        "model_ids": ["team/code", "team/plain"], "model_efforts": {"team/code": ["low", "xhigh"]},
+    }).json
+    prefix = f"custom/{provider['id']}/"
+    model = prefix + "team/code"
+    capabilities = client.get("/api/models").json["capabilities"]
+    assert capabilities[model]["efforts"] == ["low", "xhigh"]
+    assert capabilities[prefix + "team/plain"]["efforts"] == []
+    assert custom.CustomProviders(tmp_path / "custom-providers.json").reasoning_efforts(model) == ("low", "xhigh")
+    bodies = []
+
+    def reply(_provider, requested_path, body):
+        assert requested_path == path
+        bodies.append(body)
+        if path == "/responses":
+            return provider_response({"id": "response-1", "status": "completed", "output": []})
+        return provider_response({"choices": [{"message": {"content": "Done"}}]})
+
+    monkeypatch.setattr(custom.CustomProvider, "request", reply)
+    for requested, expected in [("xhigh", expected_thinking), ("high", {}), ("", {})]:
+        conversation = runtime.create_conversation(str(tmp_path), model, reasoning_effort=requested)
+        runner = AgentRunner(
+            runtime.session, runtime.store, conversation,
+            PermissionManager(Mode.ASK, lambda *_: None), lambda *_: None, config,
+        )
+        runner.run("Hello")
+        assert {key: value for key, value in bodies[-1].items() if key.startswith("reasoning")} == expected
+    assert len(bodies) == 3
+
+    response = client.put(f"/api/settings/custom-providers/{provider['id']}", json={
+        "name": "IDE3", "base_url": f"https://example.test/v1{path}", "model_ids": ["team/code"],
+        "model_efforts": {"team/code": ["bogus"]},
+    })
+    assert response.status_code == 400
+    assert runtime.session.custom_providers.reasoning_efforts(model) == ("low", "xhigh")
 
 
 def test_streaming_tool_calls_are_assembled(tmp_path, monkeypatch):

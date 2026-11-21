@@ -658,13 +658,14 @@ class AgentRunner:
         for a different one, would earn an HTTP 400 instead of a slower turn.
         Falling back to the model's own default is the useful failure.
         """
-        if not effort or is_custom_model(self._run_model):
+        if not effort:
             return ""
+        requires_known_efforts = is_go_model(self._run_model) or is_custom_model(self._run_model)
         try:
             allowed = self._model_capabilities().get("efforts")
         except Exception:  # noqa: BLE001 - a catalog hiccup must not fail a run
-            return "" if is_go_model(self._run_model) else effort
-        if is_go_model(self._run_model):
+            return "" if requires_known_efforts else effort
+        if requires_known_efforts:
             return normalize_effort(effort, allowed) if allowed else ""
         if not allowed:
             allowed = ASTRA_REASONING_EFFORTS if self._run_model == "gpt-6-astra" else ()
