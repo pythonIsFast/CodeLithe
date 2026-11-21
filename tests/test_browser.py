@@ -103,12 +103,33 @@ def test_navigate_timeout_does_not_enter_the_js_bridge() -> None:
     assert window.scripts == []
 
 
-def test_navigate_back_uses_history_not_load_url() -> None:
-    window = FakeWindow().queue(None, "complete", "https://a/", "A")
+def test_navigate_back_works_without_a_loaded_event() -> None:
+    window = FakeWindow().queue(None, {
+        "moved": True, "ready": True, "url": "https://a/", "title": "A",
+    })
+    window.events = type("Events", (), {"loaded": FakeEvent(False)})()
     session = BrowserSession(window)
-    session.navigate("back")
+
+    assert session.navigate("back") == {"url": "https://a/", "title": "A"}
     assert window.loaded_url is None
+    assert window.events.loaded.cleared is False
     assert "history.back()" in window.scripts[0]
+
+
+def test_native_history_navigation_bypasses_the_javascript_bridge() -> None:
+    window = FakeWindow()
+    window.events = type("Events", (), {"loaded": FakeEvent(False)})()
+
+    def history(direction: str, timeout: float) -> dict[str, str]:
+        assert direction == "forward"
+        assert timeout == 1
+        return {"url": "https://b/", "title": "B"}
+
+    session = BrowserSession(window, history_fn=history)
+
+    assert session.navigate("forward", timeout=1) == {"url": "https://b/", "title": "B"}
+    assert window.events.loaded.cleared is False
+    assert window.scripts == []
 
 
 def test_navigate_rejects_an_empty_url() -> None:

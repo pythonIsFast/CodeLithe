@@ -38,6 +38,7 @@ from ..screenshot import capture_window_png
 logger = logging.getLogger(__name__)
 
 BROWSER_VIEWPORT = (1280, 720)
+_HISTORY_START_TIMEOUT = 0.5
 
 
 class BrowserActionError(Exception):
@@ -125,15 +126,23 @@ class BrowserSession:
         window: WindowLike,
         screenshot_fn: Callable[..., bytes] | None = None,
         evaluate_fn: Callable[[str], Any] | None = None,
+        history_fn: Callable[[str, float], dict[str, Any] | None] | None = None,
     ) -> None:
         self.window = window
         self._screenshot_fn = screenshot_fn or _unsupported_screenshot
         self._evaluate_fn = evaluate_fn or window.evaluate_js
+        self._history_fn = history_fn
 
     def navigate(self, url: str, timeout: float = 20.0) -> dict[str, Any]:
         target = url.strip()
         if not target:
             raise BrowserActionError("`url` must not be empty.")
+        if target in ("back", "forward"):
+            if self._history_fn is not None:
+                result = self._history_fn(target, timeout)
+                if result is not None:
+                    return result
+            return self._navigate_history(target, timeout)
 
         # On WebKitGTK, evaluating JavaScript while a navigation is being
         # committed can leave pywebview's synchronous bridge waiting forever.
@@ -142,10 +151,7 @@ class BrowserSession:
         loaded = getattr(events, "loaded", None)
         if loaded is not None:
             loaded.clear()
-        if target in ("back", "forward"):
-            self.evaluate(f"history.{target}();")
-        else:
-            self.window.load_url(target)
+        self.window.load_url(target)
         if loaded is not None:
             if not loaded.wait(timeout):
                 return {"url": target, "title": ""}
@@ -155,6 +161,37 @@ class BrowserSession:
             "url": self.evaluate("location.href"),
             "title": self.evaluate("document.title"),
         }
+
+    def _navigate_history(self, direction: str, timeout: float) -> dict[str, Any]:
+        # Same-document traversal fires popstate instead of loaded. A new
+        # document also loses the marker, including when the URL is identical.
+        # Schedule the traversal after this call has returned its JS result.
+        marker = json.dumps(str(time.monotonic_ns()))
+        start_timeout_ms = int(_HISTORY_START_TIMEOUT * 1000)
+        self.evaluate(f"""(() => {{
+            window.__clHistoryPending = {marker};
+            const complete = () => {{
+                if (window.__clHistoryPending === {marker}) delete window.__clHistoryPending;
+            }};
+            window.addEventListener("popstate", complete, {{once: true}});
+            setTimeout(() => window.removeEventListener("popstate", complete), {start_timeout_ms});
+            setTimeout(() => history.{direction}(), 0);
+        }})()""")
+        start = time.monotonic()
+        deadline = start + max(0.0, timeout)
+        while time.monotonic() < deadline:
+            result = _parse_js_result(self.evaluate(f"""({{
+                moved: window.__clHistoryPending !== {marker},
+                ready: document.readyState === "complete",
+                url: location.href,
+                title: document.title
+            }})"""))
+            if result.get("moved") and result.get("ready"):
+                return {"url": result["url"], "title": result["title"]}
+            if not result.get("moved") and time.monotonic() - start >= _HISTORY_START_TIMEOUT:
+                break
+            time.sleep(0.025)
+        raise BrowserActionError(f"Browser did not go {direction}.")
 
     def _wait_for_load(self, timeout: float) -> None:
         """Poll for `readyState === "complete"`, but never treat a slow page
@@ -299,12 +336,79 @@ def _screenshot_backend() -> Callable[..., bytes] | None:
     return capture_window_png if screenshots_available() else None
 
 
-def _evaluate_browser_js(window: Any, script: str) -> Any:
+def _gtk_webview(window: Any) -> Any | None:
     gui = window.gui
     if getattr(gui, "renderer", None) == "gtkwebkit2":
-        widget = gui.BrowserView.instances[window.uid].webview
+        return gui.BrowserView.instances[window.uid].webview
+    return None
+
+
+def _evaluate_browser_js(window: Any, script: str) -> Any:
+    widget = _gtk_webview(window)
+    if widget is not None:
         return _evaluate_gtk_js(widget, script)
     return window.evaluate_js(script)
+
+
+def _navigate_browser_history(window: Any, direction: str, timeout: float) -> dict[str, Any] | None:
+    widget = _gtk_webview(window)
+    if widget is None:
+        return None
+
+    from gi.repository import GLib
+
+    done = threading.Event()
+    result: dict[str, Any] | None = None
+    error: Exception | None = None
+
+    def start() -> bool:
+        nonlocal error
+        if done.is_set():
+            return False
+        try:
+            history = widget.get_back_forward_list()
+            previous = history.get_current_item()
+            get_destination = history.get_back_item if direction == "back" else history.get_forward_item
+            if get_destination() is None:
+                raise BrowserActionError(f"No browser history entry to go {direction} to.")
+            go = widget.go_back if direction == "back" else widget.go_forward
+            go()
+        except Exception as failure:
+            error = failure
+            done.set()
+            return False
+
+        # The list changes for both same-document and full-page navigation.
+        # Only the latter needs to wait for WebKit to finish loading.
+        start_deadline = time.monotonic() + _HISTORY_START_TIMEOUT
+
+        def check() -> bool:
+            nonlocal result, error
+            if done.is_set():
+                return False
+            try:
+                if widget.is_loading():
+                    return True
+                if history.get_current_item() == previous:
+                    if time.monotonic() < start_deadline:
+                        return True
+                    raise BrowserActionError(f"Browser did not go {direction}.")
+                result = {"url": widget.get_uri(), "title": widget.get_title() or ""}
+            except Exception as failure:
+                error = failure
+            done.set()
+            return False
+
+        GLib.timeout_add(20, check)
+        return False
+
+    GLib.idle_add(start)
+    if not done.wait(max(0.0, timeout)):
+        done.set()
+        raise BrowserActionError(f"Timed out going {direction} in browser history.")
+    if error is not None:
+        raise BrowserActionError(str(error)) from error
+    return result
 
 
 def _evaluate_gtk_js(widget: Any, script: str) -> Any:
@@ -437,6 +541,7 @@ def main() -> None:  # pragma: no cover - exercised manually, needs a real displ
     session = BrowserSession(
         window, screenshot_fn=_screenshot_backend(),
         evaluate_fn=lambda script: _evaluate_browser_js(window, script),
+        history_fn=lambda direction, timeout: _navigate_browser_history(window, direction, timeout),
     )
 
     def serve_when_loaded() -> None:
