@@ -36,6 +36,24 @@ class _NoRedirect(HTTPRedirectHandler):
         return None
 
 
+def _request_error_detail(error: HTTPError, api_key: str) -> str:
+    if error.code not in (400, 422):
+        return ""
+    try:
+        payload = json.loads(error.read(8192))
+    except (ValueError, OSError, HTTPException):
+        return ""
+    detail = (payload.get("error") or payload.get("message")) if isinstance(payload, dict) else None
+    if isinstance(detail, dict):
+        detail = detail.get("message")
+    if not isinstance(detail, str):
+        return ""
+    if api_key:
+        detail = detail.replace(api_key, "[redacted]")
+    detail = " ".join("".join(char for char in detail if char.isprintable() or char.isspace()).split())
+    return detail[:240].strip() + ("…" if len(detail) > 240 else "")
+
+
 def _endpoint(value: Any) -> tuple[str, str]:
     if not isinstance(value, str) or not value or len(value) > 2048:
         raise ValueError("Enter an HTTP or HTTPS API base URL.")
@@ -105,10 +123,13 @@ class CustomProvider:
             # An endpoint must never forward its bearer key to a redirect target.
             return build_opener(_NoRedirect()).open(request, timeout=120 if body is not None else 5)
         except HTTPError as error:
+            detail = _request_error_detail(error, self.api_key)
             error.close()
             hint = " Check the API key." if error.code in (401, 403) else ""
             if 300 <= error.code < 400:
                 hint = " Use the final API URL."
+            elif detail:
+                hint = f" {detail}"
             raise RuntimeError(f"{self.name} returned HTTP {error.code}.{hint}") from None
         except (URLError, OSError, ValueError):
             raise RuntimeError(f"Could not reach {self.name}.") from None
@@ -247,7 +268,9 @@ class CustomProviders:
             raise RuntimeError("This custom provider is unavailable. Select another model or re-add the provider.")
         if provider.api_path == "/responses":
             return _send_responses(provider, body, upstream_model, stream)
-        request = responses_to_chat(body, model=upstream_model, include_images=True)
+        request = responses_to_chat(
+            body, model=upstream_model, include_images=True, merge_assistant_calls=True,
+        )
         # Standard model lists don't advertise supported reasoning levels.
         request.pop("reasoning_effort", None)
         request["stream"] = stream

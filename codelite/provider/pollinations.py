@@ -51,6 +51,7 @@ def _content(content: Any) -> Any:
 
 def responses_to_chat(
     body: dict[str, Any], *, model: str = POLLINATIONS_MODEL, include_images: bool = False,
+    merge_assistant_calls: bool = False,
 ) -> dict[str, Any]:
     messages: list[dict[str, Any]] = []
     instructions = body.get("instructions")
@@ -62,7 +63,13 @@ def responses_to_chat(
     def flush_calls() -> None:
         if not pending_calls:
             return
-        messages.append({"role": "assistant", "content": None, "tool_calls": list(pending_calls)})
+        # Chat Completions can return text and tools in one assistant message.
+        # Responses history represents the text and each tool as separate items.
+        prior = messages[-1] if messages else None
+        if merge_assistant_calls and prior and prior["role"] == "assistant" and "tool_calls" not in prior:
+            prior["tool_calls"] = list(pending_calls)
+        else:
+            messages.append({"role": "assistant", "content": None, "tool_calls": list(pending_calls)})
         pending_calls.clear()
 
     input_items = body.get("input")
@@ -84,8 +91,8 @@ def responses_to_chat(
                 }
             )
             continue
-        flush_calls()
         if item_type == "function_call_output":
+            flush_calls()
             messages.append(
                 {
                     "role": "tool",
@@ -96,6 +103,7 @@ def responses_to_chat(
             continue
         role = item.get("role")
         if role in ("user", "assistant", "system", "developer"):
+            flush_calls()
             content = item.get("content")
             converted = _content(content)
             if include_images and role == "user" and isinstance(content, list):

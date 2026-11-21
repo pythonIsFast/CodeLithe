@@ -1,6 +1,9 @@
 import json
 from email.message import Message
 from io import BytesIO
+from urllib.error import HTTPError
+
+import pytest
 
 from codelite.app.server import create_app
 from codelite.config import AppConfig
@@ -83,6 +86,34 @@ def test_streaming_tool_calls_are_assembled(tmp_path, monkeypatch):
         "read-1", "read_file", {"path": "notes.md"},
     )
     assert completed["usage"]["output_tokens"] == 9
+
+    def reply(_provider, _path, body):
+        assistant, tool = body["messages"]
+        assert assistant["role"] == "assistant"
+        assert assistant["content"] == "Reading"
+        assert assistant["tool_calls"][0]["id"] == tool["tool_call_id"] == "read-1"
+        return provider_response({"choices": [{"message": {"content": "Done"}}]})
+
+    monkeypatch.setattr(custom.CustomProvider, "request", reply)
+    result = providers.send({"model": model, "input": [
+        *completed["output"],
+        {"type": "function_call_output", "call_id": "read-1", "output": "File contents"},
+    ]}, stream=False)
+    assert result["output_text"] == "Done"
+
+
+def test_http_400_explains_provider_error_without_echoing_key(monkeypatch):
+    provider = custom.CustomProvider("IDE3", "https://example.test/v1", "test-secret", ())
+
+    class RejectRequest:
+        def open(self, request, timeout):
+            body = provider_response({"error": {"message": "Invalid tool history. Key: test-secret"}})
+            raise HTTPError(request.full_url, 400, "Bad Request", body.headers, body)
+
+    monkeypatch.setattr(custom, "build_opener", lambda *_: RejectRequest())
+    with pytest.raises(RuntimeError, match=r"IDE3 returned HTTP 400\. Invalid tool history") as error:
+        provider.request("/chat/completions", {"model": "code"})
+    assert "test-secret" not in str(error.value)
 
 
 def test_full_responses_endpoint_uses_native_stream(tmp_path, monkeypatch):
