@@ -311,8 +311,6 @@ function showNextPermission() {
     ? `Session scope: ${request.session_scope}`
     : "";
   renderDiff(request.diff);
-  el.permJudge.hidden = !request.judge_reason;
-  el.permJudgeReason.textContent = request.judge_reason || "";
   el.permFeedback.value = "";
   el.permOverlay.hidden = false;
   el.permOnce.focus();

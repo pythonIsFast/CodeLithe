@@ -18,9 +18,8 @@ A second, smaller model decides whether a shell command the agent wants to
 run is a reasonable step towards what the user actually asked for. It sees
 the command, the task prompt and recent chat messages when available.
 
-A denial is never the end of the road -- the manager escalates to the user
-with the reason text produced here, so the reason is written for a human to
-read, not just for a machine to branch on.
+The command is blocked on denial. The reason is returned to the agent
+in the shell tool result so it can explain what happened.
 """
 
 from __future__ import annotations

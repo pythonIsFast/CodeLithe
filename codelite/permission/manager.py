@@ -77,8 +77,6 @@ class PendingRequest:
     id: str
     kind: Kind
     detail: str
-    #: Set when a judge model denied the action and we escalated to the user.
-    judge_reason: str = ""
     #: Unified diff of the pending change, for write requests.
     diff: str = ""
     #: The narrow capability that a session approval will grant.
@@ -96,7 +94,6 @@ class PendingRequest:
             "id": self.id,
             "kind": self.kind,
             "detail": self.detail,
-            "judge_reason": self.judge_reason,
             "diff": self.diff,
             "created_at": self.created_at,
             "session_scope": self.session_scope,
@@ -178,11 +175,10 @@ class PermissionManager:
             allowed, reason = self._run_judge(command, task_prompt)
             if allowed:
                 return Decision(allowed=True, reason=reason, source="judge")
-            # The judge said no. That is not a silent abort: escalate to the
-            # user right away, carrying the judge's reasoning so they can see
-            # what the agent was told and decide for themselves.
-            return self._ask_user(
-                "shell", command, judge_reason=reason, working_directory=working_directory
+            return Decision(
+                allowed=False,
+                reason=f"The safety check blocked this shell command. {reason}".strip(),
+                source="judge",
             )
 
         return self._ask_user("shell", command, working_directory=working_directory)
@@ -207,7 +203,6 @@ class PermissionManager:
         self,
         kind: Kind,
         detail: str,
-        judge_reason: str = "",
         diff: str = "",
         working_directory: str = ".",
     ) -> Decision:
@@ -215,7 +210,6 @@ class PermissionManager:
             id=uuid.uuid4().hex,
             kind=kind,
             detail=detail,
-            judge_reason=judge_reason,
             diff=diff,
             session_scope=self._session_scope(kind, detail, working_directory),
             _session_grant=(
@@ -246,9 +240,7 @@ class PermissionManager:
                 source="session" if reply == "session" else "user",
             )
 
-        # Denied (or cancelled). Prefer the user's own words, then the judge's.
-        parts = [p for p in (feedback.strip(), judge_reason.strip()) if p]
-        detail_text = " ".join(parts) if parts else "No reason given."
+        detail_text = feedback.strip() or "No reason given."
         noun = "write to" if kind == "write" else "run"
         return Decision(
             allowed=False,

@@ -121,7 +121,7 @@ py -3 -m venv .venv
 | --- | --- | --- |
 | **Ask** | Approval required | Approval required |
 | **Permit writes** | Allowed | Approval required |
-| **Auto** | Allowed | A separate model reviews commands and escalates uncertain cases |
+| **Auto** | Allowed | A separate model reviews commands and blocks those it declines |
 | **Bypass permissions** | Allowed | Allowed |
 
 An approval can apply once or to a scoped grant for the session. Shell commands run with your user privileges. These permission checks do not provide an operating-system sandbox.

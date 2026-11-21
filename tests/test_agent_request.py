@@ -32,6 +32,7 @@ from codelite.config import AppConfig
 from codelite.db.store import Store
 from codelite.permission.manager import PermissionManager
 from codelite.permission.modes import Mode
+from codelite.tools.context import ToolContext
 
 
 class FakeSession:
@@ -90,6 +91,35 @@ def test_auto_safety_review_receives_last_ten_chat_messages(tmp_path: Path, monk
     assert runtime._state_for(chat).permissions._run_judge("pytest -q", "Run the tests") == (
         True, "Runs the tests.",
     )
+
+
+def test_auto_safety_denial_returns_the_reason_without_a_permission_request(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    events = []
+
+    def publish(event, data):
+        events.append((event, data))
+
+    permissions = PermissionManager(
+        Mode.AUTO, publish, judge=lambda *_: (False, "The command is outside the task."),
+    )
+
+    def unexpected_action(*args, **kwargs):
+        raise AssertionError("A denied shell action cannot run or ask for permission")
+
+    runner = _runner(tmp_path, FakeSession(), publish=publish)
+    monkeypatch.setattr(permissions, "_ask_user", unexpected_action)
+    monkeypatch.setattr("codelite.tools.shell.subprocess.run", unexpected_action)
+    result = runner._execute_call(
+        {"call_id": "shell-1", "name": "shell", "arguments": '{"command":"echo example"}'},
+        ToolContext(workspace=tmp_path, permissions=permissions, session=None),
+    )
+
+    assert result["output"] == "The safety check blocked this shell command. The command is outside the task."
+    assert [event for event, _ in events] == ["tool_started", "judge_started", "judge_finished", "tool_finished"]
+    assert events[-1][1]["ok"] is False
+    assert permissions.list_pending() == []
 
 
 def _runner(

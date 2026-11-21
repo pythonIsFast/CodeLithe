@@ -34,7 +34,7 @@ class Mode(str, Enum):
     PERMIT_WRITES = "permit_writes"
 
     #: File writes run automatically; shell commands are judged by a second
-    #: model, which can escalate back to the user with its reasoning.
+    #: model, whose verdict determines whether the command runs.
     AUTO = "auto"
 
     #: Everything runs automatically, no checks at all.

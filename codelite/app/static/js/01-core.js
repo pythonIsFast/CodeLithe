@@ -68,8 +68,6 @@ const el = {
   permDetail: $("perm-detail"),
   permScope: $("perm-scope"),
   permDiff: $("perm-diff"),
-  permJudge: $("perm-judge"),
-  permJudgeReason: $("perm-judge-reason"),
   permFeedback: $("perm-feedback"),
   permOnce: $("perm-once"),
   permSession: $("perm-session"),

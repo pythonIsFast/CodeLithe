@@ -356,16 +356,6 @@
 .perm-diff .del { color: var(--danger); }
 .perm-diff .hunk { color: var(--text-faint); }
 
-.perm-judge {
-  margin: 0 0 12px;
-  padding: 10px 12px;
-  border-left: 3px solid var(--accent-strong);
-  background: var(--bg-sunken);
-  border-radius: 0 var(--radius) var(--radius) 0;
-  font-size: 13px;
-}
-.perm-judge p { margin: 4px 0 0; color: var(--text-dim); }
-
 .perm-feedback, .field input {
   width: 100%;
   padding: 8px 11px;

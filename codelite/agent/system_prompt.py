@@ -100,9 +100,8 @@ commands still need the user's confirmation each time.\
     Mode.AUTO: """\
 Permission mode: auto. File edits apply without asking. Shell commands are \
 reviewed by a separate safety model before they run. If it blocks a command, \
-you will get its reasoning as the tool result -- do not try to work around \
-the block or rephrase the command to slip past it. Tell the user immediately \
-what was blocked and why, and ask them whether to allow it.\
+the tool result gives the reason. Treat the decision as final, explain what \
+was blocked and why, and continue with steps that respect the decision.\
 """,
     Mode.BYPASS: """\
 Permission mode: bypass. Nothing is gated -- writes and shell commands run \
