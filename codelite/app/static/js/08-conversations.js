@@ -11,6 +11,69 @@ const KEBAB_ICON =
 /** Entries rendered per transcript page; older pages load on scroll. */
 const TRANSCRIPT_PAGE_SIZE = 60;
 
+const SIDEBAR_ACTIVITY_LABELS = {
+  waiting: "Needs your input",
+  failed: "Run failed",
+  running: "Working",
+  finished: "New response",
+};
+
+function sidebarActivityDot(extraClass = "") {
+  const dot = document.createElement("span");
+  dot.className = `conv-activity ${extraClass}`.trim();
+  dot.setAttribute("aria-hidden", "true");
+  return dot;
+}
+
+function setSidebarActivity(button, dot, label, status) {
+  if (dot.dataset.status === status) return;
+  dot.dataset.status = status;
+  if (status) {
+    dot.title = SIDEBAR_ACTIVITY_LABELS[status];
+    button.setAttribute("aria-label", `${label}, ${dot.title}`);
+  } else {
+    dot.removeAttribute("title");
+    button.removeAttribute("aria-label");
+  }
+}
+
+function refreshSidebarActivity() {
+  const active = state.active?.id;
+  const selected = state.sidebarActivity[active];
+  if (selected?.status === "finished" || selected?.status === "failed") {
+    state.seenSidebarActivity.set(active, selected.run_id);
+  }
+
+  const statuses = Object.keys(SIDEBAR_ACTIVITY_LABELS);
+  for (const group of el.conversations.querySelectorAll(".conv-group")) {
+    const unread = new Set();
+    for (const button of group.querySelectorAll(".conv-open")) {
+      const id = button.dataset.conversationId;
+      const activity = state.sidebarActivity[id];
+      const status = activity && state.seenSidebarActivity.get(id) !== activity.run_id
+        ? activity.status : "";
+      const title = button.querySelector(".conv-title").textContent;
+      setSidebarActivity(button, button.querySelector(".conv-activity"), title, status);
+      if (status) unread.add(status);
+    }
+    const head = group.querySelector(".conv-group-head");
+    const groupName = head.querySelector(".conv-group-name").textContent;
+    setSidebarActivity(head, head.querySelector(".conv-activity"), groupName,
+      statuses.find((status) => unread.has(status)) || "");
+  }
+}
+
+function connectSidebarActivity() {
+  const stream = new EventSource("/api/conversation-activity");
+  stream.addEventListener("activity", (event) => {
+    state.sidebarActivity = JSON.parse(event.data).conversations;
+    for (const [id, runId] of state.seenSidebarActivity) {
+      if (state.sidebarActivity[id]?.run_id !== runId) state.seenSidebarActivity.delete(id);
+    }
+    refreshSidebarActivity();
+  });
+}
+
 /** Close any open conversation menu. */
 function closeConversationMenu() {
   const open = el.conversations.querySelector(".conv.menu-open");
@@ -95,11 +158,12 @@ function conversationRow(conversation) {
   const open = document.createElement("button");
   open.type = "button";
   open.className = "conv-open";
+  open.dataset.conversationId = conversation.id;
   open.title = conversation.workspace;
   const title = document.createElement("span");
   title.className = "conv-title";
   title.textContent = conversation.title || "Untitled";
-  open.appendChild(title);
+  open.append(sidebarActivityDot(), title);
   open.addEventListener("click", () => openConversation(conversation.id));
 
   const menuButton = document.createElement("button");
@@ -206,6 +270,7 @@ function renderConversationList() {
       `${FOLDER_ICON}<span class="conv-group-name"></span>` +
       `<span class="conv-group-add" title="New chat in ${escapeHtml(workspace)}">+</span>`;
     head.querySelector(".conv-group-name").textContent = label;
+    head.insertBefore(sidebarActivityDot("conv-group-activity"), head.querySelector(".conv-group-add"));
     head.title = workspace;
     head.addEventListener("click", (event) => {
       if (event.target.closest(".conv-group-add")) return;
@@ -229,6 +294,7 @@ function renderConversationList() {
     wrap.append(head, body);
     el.conversations.appendChild(wrap);
   }
+  refreshSidebarActivity();
 }
 
 async function loadConversations() {

@@ -146,6 +146,7 @@
 .conv.menu-open { background: var(--bg-hover); color: var(--text); }
 
 .conv-open {
+  position: relative;
   flex: 1;
   min-width: 0;
   border: 0;
@@ -158,6 +159,33 @@
   font-size: 13px;
 }
 .conv-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.conv-activity {
+  display: none;
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+}
+.conv-open .conv-activity {
+  position: absolute;
+  left: -4px;
+  top: calc(50% - 3px);
+}
+.conv-activity[data-status="running"] {
+  display: block;
+  background: var(--accent);
+  animation: conv-activity-pulse 1.7s ease-in-out infinite;
+}
+.conv-activity[data-status="waiting"] { display: block; background: var(--gold); }
+.conv-activity[data-status="finished"] { display: block; background: var(--blue); }
+.conv-activity[data-status="failed"] { display: block; background: var(--danger); }
+.conv-group:not(.collapsed) .conv-group-activity { display: none; }
+
+@keyframes conv-activity-pulse { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) {
+  .conv-activity[data-status="running"] { animation: none; }
+}
 
 .conv-menu-btn {
   display: grid;

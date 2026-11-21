@@ -14,6 +14,7 @@ async function loadAuthenticatedApp() {
   await loadModels();
   if (state.appLoaded) return;
   state.appLoaded = true;
+  connectSidebarActivity();
   loadPlanUsage();
   await loadConversations();
 

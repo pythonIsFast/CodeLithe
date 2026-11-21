@@ -28,6 +28,7 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator
+from uuid import uuid4
 
 from ..agent.judge import judge_shell_command
 from ..agent.loop import AgentRunner
@@ -49,10 +50,22 @@ KEEPALIVE_SECONDS = 15.0
 #: Where the last plan-usage snapshot is cached in the store.
 PLAN_USAGE_KEY = "plan_usage"
 BEHAVIOUR_KEY = "behaviour"
+ACTIVITY_EVENTS = {
+    "permission_request", "question_request", "error", "compaction_failed",
+    "compaction_skipped", "cancelled",
+}
 
 
 class RunInProgress(Exception):
     """Raised when a second message arrives while a run is still going."""
+
+
+@dataclass
+class SidebarActivity:
+    run_id: str = field(default_factory=lambda: uuid4().hex)
+    status: str = "running"
+    pending: set[str] = field(default_factory=set)
+    compacting: bool = False
 
 
 @dataclass
@@ -82,6 +95,8 @@ class Runtime:
             ProviderConfig(auth_file_path=self.config.data_dir / "auth.json")
         )
         self._conversations: dict[str, ConversationRuntime] = {}
+        self._sidebar_activity: dict[str, SidebarActivity] = {}
+        self._activity_subscribers: list[queue.Queue] = []
         self._lock = threading.Lock()
         self._apply_behaviour(self.store.get_state(BEHAVIOUR_KEY) or {})
 
@@ -157,6 +172,7 @@ class Runtime:
         self.store.delete_conversation(conversation_id)
         with self._lock:
             self._conversations.pop(conversation_id, None)
+        self._update_activity(conversation_id, "cancelled")
 
     # -- live state -------------------------------------------------------------
 
@@ -195,15 +211,87 @@ class Runtime:
         state = self._state_for(conversation)
         if reply not in ("once", "session", "deny"):
             return False
-        return state.permissions.reply(request_id, reply, feedback)  # type: ignore[arg-type]
+        accepted = state.permissions.reply(request_id, reply, feedback)  # type: ignore[arg-type]
+        if accepted:
+            self._update_activity(conversation.id, "answered", request_id)
+        return accepted
 
     def reply_question(self, conversation: Conversation, question_id: str, answer: str) -> bool:
-        return self._state_for(conversation).questions.reply(question_id, answer)
+        accepted = self._state_for(conversation).questions.reply(question_id, answer)
+        if accepted:
+            self._update_activity(conversation.id, "answered", question_id)
+        return accepted
 
     # -- events ---------------------------------------------------------------------
 
+    def _notify_activity(self) -> None:
+        # Called with _lock held. One wake-up per subscriber is enough, since
+        # the stream sends the latest snapshot after waking.
+        for subscriber in self._activity_subscribers:
+            try:
+                subscriber.put_nowait(None)
+            except queue.Full:
+                pass
+
+    def _begin_activity(self, cid: str, *, compacting: bool = False) -> None:
+        with self._lock:
+            self._sidebar_activity[cid] = SidebarActivity(compacting=compacting)
+            self._notify_activity()
+
+    def _update_activity(self, cid: str, event: str, request_id: str = "") -> None:
+        with self._lock:
+            activity = self._sidebar_activity.get(cid)
+            if activity is None:
+                return
+            if event == "cancelled" or (activity.compacting and event == "compaction_skipped"):
+                del self._sidebar_activity[cid]
+                self._notify_activity()
+                return
+            if activity.status in ("finished", "failed"):
+                return
+
+            previous = activity.status
+            if event in ("permission_request", "question_request"):
+                activity.pending.add(request_id)
+                activity.status = "waiting"
+            elif event == "answered":
+                activity.pending.discard(request_id)
+                if not activity.pending:
+                    activity.status = "running"
+            elif event == "error" or (activity.compacting and event == "compaction_failed"):
+                activity.status = "failed"
+            elif event == "finished":
+                activity.status = "finished"
+            if activity.status != previous:
+                self._notify_activity()
+
+    def subscribe_activity(self) -> Iterator[str]:
+        """One lightweight status stream for all conversations in the sidebar."""
+        wakeup: queue.Queue = queue.Queue(maxsize=1)
+        with self._lock:
+            self._activity_subscribers.append(wakeup)
+        try:
+            while True:
+                with self._lock:
+                    snapshot = {
+                        cid: {"status": activity.status, "run_id": activity.run_id}
+                        for cid, activity in self._sidebar_activity.items()
+                    }
+                yield _format_sse("activity", {"conversations": snapshot})
+                while True:
+                    try:
+                        wakeup.get(timeout=KEEPALIVE_SECONDS)
+                        break
+                    except queue.Empty:
+                        yield ": keepalive\n\n"
+        finally:
+            with self._lock:
+                self._activity_subscribers.remove(wakeup)
+
     def publish(self, conversation_id: str, event: str, data: dict[str, Any]) -> None:
         """Fan an event out to every UI stream watching this conversation."""
+        if event in ACTIVITY_EVENTS:
+            self._update_activity(conversation_id, event, data.get("id", ""))
         with self._lock:
             state = self._conversations.get(conversation_id)
             subscribers = list(state.subscribers) if state else []
@@ -271,6 +359,7 @@ class Runtime:
                 daemon=True,
             )
             state.thread = thread
+            self._begin_activity(conversation.id)
             thread.start()
 
     def steer_run(
@@ -312,6 +401,7 @@ class Runtime:
                 daemon=True,
             )
             state.thread = thread
+            self._begin_activity(conversation.id, compacting=True)
             thread.start()
 
     def _run_and_report(
@@ -329,13 +419,18 @@ class Runtime:
             logger.exception("Agent run failed before its streaming loop started")
             self.publish(cid, "error", {"message": str(error)})
         finally:
+            self._update_activity(cid, "cancelled" if runner.cancelled else "finished")
             self.refresh_plan_usage(publish_to=cid)
             self.publish(cid, "run_finished", {})
 
     def _compact_and_report(self, runner: AgentRunner, cid: str) -> None:
         try:
             runner.compact()
+        except Exception as error:  # noqa: BLE001 - report unexpected failures to the UI
+            logger.exception("Manual compaction failed")
+            self.publish(cid, "error", {"message": str(error)})
         finally:
+            self._update_activity(cid, "cancelled" if runner.cancelled else "finished")
             self.refresh_plan_usage(publish_to=cid)
 
     # -- plan usage ------------------------------------------------------------

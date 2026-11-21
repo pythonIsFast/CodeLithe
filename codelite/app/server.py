@@ -845,6 +845,10 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
             return error
         return Response(rt().subscribe(conversation), headers=SSE_HEADERS)
 
+    @app.get("/api/conversation-activity")
+    def conversation_activity():
+        return Response(rt().subscribe_activity(), headers=SSE_HEADERS)
+
     # -- permissions -----------------------------------------------------------------
 
     @app.post("/api/conversations/<conversation_id>/permission/<request_id>")

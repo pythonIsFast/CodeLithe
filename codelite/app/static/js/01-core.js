@@ -162,6 +162,8 @@ const state = {
   pendingRename: null,
   pendingDelete: null,
   conversations: [],
+  sidebarActivity: {},
+  seenSidebarActivity: new Map(),
   active: null,
   // A new session that exists only in the interface until its first message:
   // no database row, no sidebar entry, no stream.
