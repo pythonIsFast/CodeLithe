@@ -127,10 +127,12 @@ class BrowserSession:
         screenshot_fn: Callable[..., bytes] | None = None,
         evaluate_fn: Callable[[str], Any] | None = None,
         history_fn: Callable[[str, float], dict[str, Any] | None] | None = None,
+        script_fn: Callable[[str], Any] | None = None,
     ) -> None:
         self.window = window
         self._screenshot_fn = screenshot_fn or _unsupported_screenshot
         self._evaluate_fn = evaluate_fn or window.evaluate_js
+        self._script_fn = script_fn or self._evaluate_fn
         self._history_fn = history_fn
 
     def navigate(self, url: str, timeout: float = 20.0) -> dict[str, Any]:
@@ -158,8 +160,8 @@ class BrowserSession:
         else:
             self._wait_for_load(timeout)
         return {
-            "url": self.evaluate("location.href"),
-            "title": self.evaluate("document.title"),
+            "url": self._evaluate_fn("location.href"),
+            "title": self._evaluate_fn("document.title"),
         }
 
     def _navigate_history(self, direction: str, timeout: float) -> dict[str, Any]:
@@ -168,7 +170,7 @@ class BrowserSession:
         # Schedule the traversal after this call has returned its JS result.
         marker = json.dumps(str(time.monotonic_ns()))
         start_timeout_ms = int(_HISTORY_START_TIMEOUT * 1000)
-        self.evaluate(f"""(() => {{
+        self._evaluate_fn(f"""(() => {{
             window.__clHistoryPending = {marker};
             const complete = () => {{
                 if (window.__clHistoryPending === {marker}) delete window.__clHistoryPending;
@@ -180,7 +182,7 @@ class BrowserSession:
         start = time.monotonic()
         deadline = start + max(0.0, timeout)
         while time.monotonic() < deadline:
-            result = _parse_js_result(self.evaluate(f"""({{
+            result = _parse_js_result(self._evaluate_fn(f"""({{
                 moved: window.__clHistoryPending !== {marker},
                 ready: document.readyState === "complete",
                 url: location.href,
@@ -200,14 +202,14 @@ class BrowserSession:
         deadline = time.monotonic() + max(0.0, timeout)
         while time.monotonic() < deadline:
             try:
-                if self.evaluate("document.readyState") == "complete":
+                if self._evaluate_fn("document.readyState") == "complete":
                     return
             except Exception:  # noqa: BLE001 - the page may not be ready to eval yet
                 pass
             time.sleep(0.15)
 
     def snapshot(self, max_chars: int = 20_000) -> dict[str, Any]:
-        data = _parse_js_result(self.evaluate(_SNAPSHOT_JS))
+        data = _parse_js_result(self._evaluate_fn(_SNAPSHOT_JS))
         elements = data.get("elements") or []
         kept: list[str] = []
         used = 0
@@ -231,7 +233,7 @@ class BrowserSession:
   return {{ok: true}};
 }})()
 """
-        result = _parse_js_result(self.evaluate(script))
+        result = _parse_js_result(self._evaluate_fn(script))
         if not result.get("ok"):
             raise BrowserActionError(result.get("error") or f"Could not click {ref}.")
 
@@ -255,20 +257,16 @@ class BrowserSession:
   return {{ok: true}};
 }})()
 """
-        result = _parse_js_result(self.evaluate(script))
+        result = _parse_js_result(self._evaluate_fn(script))
         if not result.get("ok"):
             raise BrowserActionError(result.get("error") or f"Could not fill {ref}.")
 
     def evaluate(self, script: str) -> Any:
-        return self._evaluate_fn(script)
+        return self._script_fn(script)
 
     def screenshot(self, *, full_page: bool = False) -> dict[str, str]:
         png_bytes = self._screenshot_fn(self.window, full_page=full_page)
         return {"png_base64": base64.b64encode(png_bytes).decode("ascii")}
-
-    def reset(self) -> dict[str, bool]:
-        self.window.load_url("about:blank")
-        return {"reset": True}
 
 
 _ACTIONS: dict[str, Callable[[BrowserSession, dict[str, Any]], Any]] = {
@@ -281,7 +279,6 @@ _ACTIONS: dict[str, Callable[[BrowserSession, dict[str, Any]], Any]] = {
     )[1],
     "evaluate": lambda s, c: s.evaluate(str(c.get("script", ""))),
     "screenshot": lambda s, c: s.screenshot(full_page=c.get("full_page") is True),
-    "reset": lambda s, c: s.reset(),
     "shutdown": lambda s, c: {"stopped": True},
 }
 
@@ -343,9 +340,11 @@ def _gtk_webview(window: Any) -> Any | None:
     return None
 
 
-def _evaluate_browser_js(window: Any, script: str) -> Any:
+def _evaluate_browser_js(window: Any, script: str, *, format_result: bool = False) -> Any:
     widget = _gtk_webview(window)
     if widget is not None:
+        if format_result:
+            return _evaluate_gtk_user_script(widget, script)
         return _evaluate_gtk_js(widget, script)
     return window.evaluate_js(script)
 
@@ -411,18 +410,22 @@ def _navigate_browser_history(window: Any, direction: str, timeout: float) -> di
     return result
 
 
-def _evaluate_gtk_js(widget: Any, script: str) -> Any:
-    """Evaluate directly in the current document, even during a redirect."""
-    from gi.repository import GLib
-
-    # pywebview's public evaluator uses pywebview._stringify, which is only
-    # injected after a page finishes loading. A redirect replaces that global.
+def _evaluate_gtk_user_script(widget: Any, script: str) -> Any:
+    # Keep support for returning DOM nodes and other values WebKit cannot
+    # marshal directly. Check eval before running any user code, so falling
+    # back to native evaluation on a strict page cannot repeat its effects.
     wrapped = f"""
 (() => {{
     try {{
+        (0, eval)("0");
+    }} catch (failure) {{
+        if (failure instanceof EvalError) return {{evalBlocked: true}};
+        throw failure;
+    }}
+    try {{
         const value = (0, eval)({json.dumps(script)});
         const ancestors = [];
-        return JSON.stringify({{value: value ?? null}}, function (_, item) {{
+        return JSON.parse(JSON.stringify({{value: value ?? null}}, function (_, item) {{
             if (item === globalThis) return 'Window';
             if (item instanceof Node) return item.outerHTML ?? item.textContent;
             if (item instanceof NodeList || item instanceof HTMLCollection) return Array.from(item);
@@ -433,12 +436,24 @@ def _evaluate_gtk_js(widget: Any, script: str) -> Any:
                 ancestors.push(item);
             }}
             return item;
-        }});
+        }}));
     }} catch (failure) {{
-        return JSON.stringify({{error: String(failure)}});
+        return {{error: String(failure)}};
     }}
 }})()
 """
+    response = _evaluate_gtk_js(widget, wrapped)
+    if response.get("evalBlocked"):
+        return _evaluate_gtk_js(widget, script)
+    if "error" in response:
+        raise BrowserActionError(response["error"])
+    return response.get("value")
+
+
+def _evaluate_gtk_js(widget: Any, script: str) -> Any:
+    """Submit source directly to WebKit without requiring a page JS bridge."""
+    from gi.repository import GLib
+
     modern_api = hasattr(widget, "evaluate_javascript")
     done = threading.Event()
     value: str | None = None
@@ -451,7 +466,10 @@ def _evaluate_gtk_js(widget: Any, script: str) -> Any:
                 widget.evaluate_javascript_finish(task) if modern_api
                 else widget.run_javascript_finish(task).get_js_value()
             )
-            value = result.to_string() if result is not None else None
+            if result is not None and not result.is_undefined():
+                value = result.to_json(0)
+                if value is None:
+                    raise BrowserActionError("Return a JSON-compatible JavaScript value.")
         except Exception as failure:  # noqa: BLE001 - the caller must be woken up
             error = failure
         finally:
@@ -461,9 +479,9 @@ def _evaluate_gtk_js(widget: Any, script: str) -> Any:
         nonlocal error
         try:
             if modern_api:
-                widget.evaluate_javascript(wrapped, -1, None, None, None, finish)
+                widget.evaluate_javascript(script, -1, None, None, None, finish)
             else:
-                widget.run_javascript(wrapped, None, finish)
+                widget.run_javascript(script, None, finish)
         except Exception as failure:  # noqa: BLE001 - the caller must be woken up
             error = failure
             done.set()
@@ -473,10 +491,7 @@ def _evaluate_gtk_js(widget: Any, script: str) -> Any:
     done.wait()  # The parent enforces the per-action deadline if WebKit stalls.
     if error is not None:
         raise BrowserActionError(f"WebKit could not evaluate JavaScript: {error}") from None
-    response = json.loads(value) if value else {}
-    if "error" in response:
-        raise BrowserActionError(response["error"])
-    return response.get("value")
+    return json.loads(value) if value is not None else None
 
 
 def _prepare_gtk_browser() -> None:
@@ -541,6 +556,7 @@ def main() -> None:  # pragma: no cover - exercised manually, needs a real displ
     session = BrowserSession(
         window, screenshot_fn=_screenshot_backend(),
         evaluate_fn=lambda script: _evaluate_browser_js(window, script),
+        script_fn=lambda script: _evaluate_browser_js(window, script, format_result=True),
         history_fn=lambda direction, timeout: _navigate_browser_history(window, direction, timeout),
     )
 

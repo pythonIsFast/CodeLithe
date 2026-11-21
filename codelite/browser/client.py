@@ -190,6 +190,10 @@ class BrowserClient:
         try:
             if time.monotonic() >= deadline:
                 raise BrowserError("The browser is busy with another action. Try again.")
+            if action == "reset":
+                # A navigation to about:blank still depends on the old renderer.
+                self._stop_process()
+                return {"reset": True}
             self._ensure_started()
             self._next_id += 1
             request_id = self._next_id

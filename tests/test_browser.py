@@ -29,6 +29,7 @@ from typing import Any
 import pytest
 
 from codelite.browser import client as browser_client
+from codelite.browser import host as browser_host
 from codelite.browser.client import BrowserClient, BrowserError
 from codelite.browser.host import BrowserActionError, BrowserSession, dispatch
 from codelite.permission.manager import PermissionDenied, PermissionManager
@@ -211,6 +212,25 @@ def test_dispatch_turns_an_exception_into_an_error_reply() -> None:
     response = dispatch(BrowserSession(FakeWindow()), {"id": 1, "action": "click", "ref": "x"})
     assert response["ok"] is False
     assert "id" in response and response["id"] == 1
+
+
+def test_evaluate_runs_native_source_when_csp_blocks_eval(monkeypatch) -> None:
+    window = FakeWindow().queue({"evalBlocked": True}, 42)
+    monkeypatch.setattr(browser_host, "_evaluate_gtk_js", lambda widget, script: widget.evaluate_js(script))
+
+    assert browser_host._evaluate_gtk_user_script(window, "40 + 2") == 42
+    assert window.scripts[-1] == "40 + 2"
+    assert len(window.scripts) == 2
+
+
+def test_reset_discards_the_renderer_without_sending_it_a_command(monkeypatch) -> None:
+    client = BrowserClient()
+    stopped = []
+    monkeypatch.setattr(client, "_stop_process", lambda: stopped.append(True))
+    monkeypatch.setattr(client, "_ensure_started", lambda: pytest.fail("Reset must not start a renderer"))
+
+    assert client.call("reset") == {"reset": True}
+    assert stopped == [True]
 
 
 @pytest.mark.parametrize("stop_reading", [False, True])
