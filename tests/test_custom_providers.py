@@ -32,7 +32,7 @@ def test_multiple_providers_discover_route_and_keep_keys_private(tmp_path, monke
         def open(self, request, timeout):
             calls.append((request.full_url, request.get_header("Authorization"), request.data))
             if request.full_url.endswith("/models"):
-                return provider_response({"data": [{"id": "team/shared-model"}]})
+                return provider_response({"data": [{"id": "team/shared-model", "max_input_tokens": 96_000}]})
             return provider_response({"choices": [{"message": {"content": "OK"}}]})
 
     monkeypatch.setattr(custom, "build_opener", lambda *_: Opener())
@@ -89,8 +89,9 @@ def test_custom_model_effort_reaches_the_endpoint(tmp_path, monkeypatch, path, e
     def reply(_provider, requested_path, body=None):
         if requested_path == "/models":
             return provider_response({"data": [
-                {"id": "team/code", "supported_reasoning_levels": [{"effort": "low"}, {"effort": "xhigh"}]},
-                {"id": "team/plain"},
+                {"id": "team/code", "context_length": 128_000,
+                 "supported_reasoning_levels": [{"effort": "low"}, {"effort": "xhigh"}]},
+                {"id": "team/plain", "context_length": 64_000},
             ]})
         assert requested_path == path
         bodies.append(body)
@@ -132,7 +133,8 @@ def test_custom_model_reasoning_fallback_uses_documented_levels(tmp_path, monkey
     advertised = {
         "id": model, "capabilities": {"reasoning": {"supported": True, "effort": ["low", "medium"]}},
     }
-    rows = [{"id": model}, {"id": "custom-unknown"}]
+    advertised["context_length"] = 262_144
+    rows = [{"id": model, "context_length": 262_144}, {"id": "custom-unknown", "context_length": 64_000}]
 
     def reply(_provider, path, body=None):
         assert path == "/models" and body is None
@@ -152,6 +154,57 @@ def test_custom_model_reasoning_fallback_uses_documented_levels(tmp_path, monkey
     advertised["capabilities"]["reasoning"]["supported"] = False
     providers.save(options, provider["id"])
     assert providers.reasoning_efforts(prefix + model) == ()
+
+
+def test_custom_context_limits_reach_chat_and_agent(tmp_path, monkeypatch):
+    app = create_app(AppConfig(data_dir=tmp_path))
+    client = app.test_client()
+    runtime = app.config["runtime"]
+    glm = "zai-org/GLM-5.3"
+    qwen = "Qwen/Qwen3.8-27B"
+    calls = []
+
+    def reply(_provider, path, body=None):
+        assert body is None
+        calls.append(path)
+        if path == "/models":
+            return provider_response({"data": [
+                {"id": glm},
+                {"id": qwen, "context_length": 262_144, "max_input_tokens": 196_608},
+            ]})
+        assert path == "/model/info"
+        return provider_response({"data": [
+            {"model_name": glm, "model_info": {"max_input_tokens": 900_000}},
+            {"model_name": glm, "model_info": {"max_input_tokens": 800_000}},
+            {"model_name": qwen, "model_info": {"max_input_tokens": 400_000}},
+            {"model_name": "unknown", "model_info": {"max_input_tokens": 900_000}},
+        ]})
+
+    monkeypatch.setattr(custom.CustomProvider, "request", reply)
+    provider = client.post("/api/settings/custom-providers", json={
+        "name": "IDE3", "base_url": "https://example.test/v1",
+    }).json
+    prefix = f"custom/{provider['id']}/"
+    caps = client.get("/api/models").json["capabilities"]
+    assert caps[prefix + glm]["context_window"] == 800_000
+    assert caps[prefix + qwen]["context_window"] == 196_608
+    assert prefix + "unknown" not in caps
+    chat = client.post("/api/conversations", json={"model": prefix + qwen, "workspace": str(tmp_path)}).json
+    assert chat["context_window"] == 196_608
+    url = f"/api/conversations/{chat['id']}"
+    assert client.patch(url, json={"model": prefix + glm}).json["context_window"] == 800_000
+    assert client.get(url).json["context_window"] == 800_000
+
+    conversation = runtime.store.get_conversation(chat["id"])
+    runner = AgentRunner(
+        runtime.session, runtime.store, conversation,
+        PermissionManager(Mode.ASK, lambda *_: None), lambda *_: None, runtime.config,
+    )
+    conversation.context_tokens = 320_000
+    assert not runner._needs_compaction()
+    conversation.context_tokens = 700_000
+    assert runner._needs_compaction()
+    assert calls == ["/models", "/model/info"]
 
 
 def test_streaming_tool_calls_are_assembled(tmp_path, monkeypatch):

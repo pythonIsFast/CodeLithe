@@ -281,7 +281,10 @@ function wireEvents() {
     }
     const updated = await patch(`/api/conversations/${state.active.id}`, body)
       .catch((error) => { toast(error.message, true); return null; });
-    if (updated) Object.assign(state.active, updated);
+    if (updated && state.active?.id === updated.id) {
+      Object.assign(state.active, updated);
+      refreshUsageFromConversation();
+    }
   });
 
   el.renameSave.addEventListener("click", () => {

@@ -547,7 +547,13 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
             )
         except ValueError as error:
             return jsonify({"error": str(error)}), 400
-        return jsonify(conversation.as_dict()), 201
+        return jsonify({
+            **conversation.as_dict(),
+            "context_window": conversation_context_window(conversation.model),
+        }), 201
+
+    def conversation_context_window(model: str) -> int:
+        return rt().model_context_windows.get(model) or context_window_for(model)
 
     def conversation_snapshot(
         conversation: Conversation, limit: int | None = None, before: int | None = None,
@@ -559,8 +565,7 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
             **conversation.as_dict(),
             "entries": entries,
             "has_more": limit is not None and runtime.store.has_items_before(conversation.id, oldest),
-            "context_window": runtime.model_context_windows.get(conversation.model)
-            or context_window_for(conversation.model),
+            "context_window": conversation_context_window(conversation.model),
             "busy": runtime.is_busy(conversation),
             "pending_permissions": runtime.pending_permissions(conversation),
         }
@@ -658,7 +663,10 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
             runtime.store.update_conversation(conversation_id, **fields)
 
         refreshed = runtime.store.get_conversation(conversation_id)
-        return jsonify(refreshed.as_dict() if refreshed else {})
+        payload = refreshed.as_dict() if refreshed else {}
+        if refreshed and "model" in fields:
+            payload["context_window"] = conversation_context_window(refreshed.model)
+        return jsonify(payload)
 
     @app.delete("/api/conversations/<conversation_id>")
     def delete_conversation(conversation_id: str):

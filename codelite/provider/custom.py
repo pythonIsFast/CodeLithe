@@ -8,7 +8,7 @@ import re
 import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from http.client import HTTPException
 from pathlib import Path
 from time import monotonic
@@ -27,7 +27,6 @@ MODEL_ID_LIMIT = 200 - len(MODEL_PREFIX) - 32 - 1
 CATALOG_TTL = 300
 CATALOG_MAX_BYTES = 4 * 1024 * 1024
 CUSTOM_REASONING_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra")
-ModelCatalog = dict[str, tuple[str, ...] | None]
 
 # Some OpenAI-compatible endpoints publish only model IDs.
 # https://huggingface.co/Qwen/Qwen3.8-27B#api-usage
@@ -136,6 +135,28 @@ def _catalog_efforts(entry: dict[str, Any]) -> tuple[str, ...] | None:
     return None
 
 
+def _catalog_context_window(entry: dict[str, Any]) -> int | None:
+    # A gateway can report a smaller input budget than the model's total
+    # window. Use the smallest advertised limit when both are available.
+    limits = [entry.get(key) for key in (
+        "max_input_tokens", "context_window", "context_length", "max_context_window", "max_model_len",
+    )]
+    for section, key in (("limit", "context"), ("top_provider", "context_length")):
+        details = entry.get(section)
+        if isinstance(details, dict):
+            limits.append(details.get(key))
+    return min((limit for limit in limits if type(limit) is int and limit > 0), default=None)
+
+
+@dataclass(frozen=True)
+class ModelInfo:
+    efforts: tuple[str, ...] | None = None
+    context_window: int | None = None
+
+
+ModelCatalog = dict[str, ModelInfo]
+
+
 @dataclass(frozen=True)
 class CustomProvider:
     name: str
@@ -181,8 +202,8 @@ class CustomProvider:
         except (URLError, OSError, ValueError):
             raise RuntimeError(f"Could not reach {self.name}.") from None
 
-    def discover(self) -> ModelCatalog:
-        with self.request("/models") as response:
+    def _model_rows(self, path: str) -> list[dict[str, Any]]:
+        with self.request(path) as response:
             raw = response.read(CATALOG_MAX_BYTES + 1)
         if len(raw) > CATALOG_MAX_BYTES:
             raise RuntimeError(f"{self.name} returned a model list that is too large.")
@@ -193,11 +214,39 @@ class CustomProvider:
         rows = payload.get("data") if isinstance(payload, dict) else None
         if not isinstance(rows, list):
             raise RuntimeError(f"{self.name} did not return an OpenAI-compatible model list.")
-        return {
-            entry["id"]: _catalog_efforts(entry) for entry in rows if isinstance(entry, dict)
-            and _is_model_id(entry.get("id"))
+        return [row for row in rows if isinstance(row, dict)]
+
+    def discover(self) -> ModelCatalog:
+        models = {
+            entry["id"]: ModelInfo(_catalog_efforts(entry), _catalog_context_window(entry))
+            for entry in self._model_rows("/models")
+            if _is_model_id(entry.get("id"))
             and entry.get("type") in (None, "model", "language", "chat", "text")
         }
+        missing = {
+            model for model in (self.model_ids or models)
+            if model not in models or models[model].context_window is None
+        }
+        if missing:
+            self._discover_missing_windows(models, missing)
+        return models
+
+    def _discover_missing_windows(self, models: ModelCatalog, missing: set[str]) -> None:
+        # LiteLLM exposes deployment limits here even when /models only has IDs.
+        try:
+            entries = self._model_rows("/model/info")
+        except (RuntimeError, OSError, HTTPException):
+            return
+        limits: dict[str, int] = {}
+        for entry in entries:
+            model = entry.get("model_name")
+            details = entry.get("model_info")
+            if isinstance(model, str) and model in missing and isinstance(details, dict):
+                window = _catalog_context_window(details)
+                if window is not None:
+                    limits[model] = min(window, limits.get(model, window))
+        for model, window in limits.items():
+            models[model] = replace(models.get(model, ModelInfo()), context_window=window)
 
 
 class CustomProviders:
@@ -321,14 +370,22 @@ class CustomProviders:
         if model in provider.model_efforts:
             return provider.model_efforts[model]
         discovered, _ = self._discovered_models(key, provider)
-        efforts = discovered.get(model)
-        if efforts is not None:
-            return efforts
+        info = discovered.get(model)
+        if info is not None and info.efforts is not None:
+            return info.efforts
         return _DOCUMENTED_EFFORTS.get(model.casefold(), ())
 
     def reasoning_efforts(self, model: str) -> tuple[str, ...]:
         key, provider, upstream_model = self._resolve_model(model)
         return self._efforts_for(key, provider, upstream_model) if provider else ()
+
+    def context_window(self, model: str) -> int | None:
+        key, provider, upstream_model = self._resolve_model(model)
+        if provider is None:
+            return None
+        discovered, _ = self._discovered_models(key, provider)
+        info = discovered.get(upstream_model)
+        return info.context_window if info is not None else None
 
     def send(self, body: dict[str, Any], *, stream: bool):
         model = body["model"]

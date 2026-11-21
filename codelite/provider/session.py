@@ -94,6 +94,7 @@ class Session:
         if is_custom_model(model):
             return {
                 "efforts": list(self.custom_providers.reasoning_efforts(model)),
+                "context_window": self.context_window(model),
                 "default_effort": "",
                 "fast": False,
                 "flex": False,
@@ -124,9 +125,9 @@ class Session:
         }
 
     def context_window(self, model: str) -> int | None:
-        """The model's usable context window in tokens, from Codex's catalog.
+        """The model's usable context window in tokens, from its provider catalog.
 
-        Prefers ``max_context_window`` -- the model's real capability -- over
+        For Codex, prefers ``max_context_window`` -- the model's real capability -- over
         the catalog's ``context_window``, which Codex tunes down for its own
         cost/performance defaults (e.g. GPT-5.6 Sol reports a 1.05M capability
         but a 272k default). Community reports on the stock Codex CLI confirm
@@ -138,7 +139,7 @@ class Session:
         callers should fall back rather than substitute a guess.
         """
         if is_custom_model(model):
-            return None
+            return self.custom_providers.context_window(model)
         if is_go_model(model):
             info = self.opencode_go.models().get(model, {})
             window = (info.get("limit") or {}).get("context")
