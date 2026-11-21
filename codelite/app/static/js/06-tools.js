@@ -53,9 +53,9 @@ const FOOT_MARK =
 
 /**
  * Add the action row under an assistant message: the reference-style mark with
- * time and token count, plus copy/retry behind a hover.
+ * time, token count and model rate, plus copy/retry behind a hover.
  */
-function attachFooter(bubble, { at, outputTokens } = {}) {
+function attachFooter(bubble, { at, outputTokens, outputTokensPerSecond } = {}) {
   const footer = document.createElement("div");
   footer.className = "msg-foot";
 
@@ -78,6 +78,13 @@ function attachFooter(bubble, { at, outputTokens } = {}) {
     cost.className = "msg-tokens";
     cost.textContent = `↓ ${formatTokens(outputTokens)} tokens`;
     cost.title = `${outputTokens.toLocaleString()} tokens in this model output`;
+    if (Number.isFinite(outputTokensPerSecond) && outputTokensPerSecond > 0) {
+      const rate = outputTokensPerSecond < 0.01
+        ? "<0.01"
+        : outputTokensPerSecond.toLocaleString(undefined, { maximumFractionDigits: 2 });
+      cost.textContent += ` · ${rate} tok/s`;
+      cost.title += ". Average over the model request, including the wait for the first token.";
+    }
     footer.appendChild(cost);
   }
 
@@ -143,7 +150,7 @@ function finalizeLiveText() {
   bubble.classList.remove("streaming");
   attachFooter(bubble, {
     at: new Date().toISOString(),
-    outputTokens: state.lastTurnOutputTokens,
+    ...state.lastTurnUsage,
   });
   if (stick) scrollDown(true);
 }
@@ -514,7 +521,11 @@ function renderEntryInto(sink, entry) {
     const text = textFromContent(item.content);
     if (text.trim()) {
       const bubble = sink.appendChild(assistantBubble(text));
-      attachFooter(bubble, { at: entry.created_at, outputTokens: meta.output_tokens });
+      attachFooter(bubble, {
+        at: entry.created_at,
+        outputTokens: meta.output_tokens,
+        outputTokensPerSecond: meta.output_tokens_per_second,
+      });
     }
     return;
   }

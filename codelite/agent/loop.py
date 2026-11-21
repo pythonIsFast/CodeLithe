@@ -34,6 +34,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from itertools import groupby
 from pathlib import Path
+from time import perf_counter
 from typing import Any, Callable, Iterator
 
 from .. import settings
@@ -322,7 +323,7 @@ class AgentRunner:
 
             self._apply_pending_updates(items)
             self._publish("step", {"step": step})
-            response = self._request_turn(items)
+            response, model_seconds = self._request_turn(items)
             if response is None:
                 self._publish(
                     "error",
@@ -335,7 +336,7 @@ class AgentRunner:
                 items[:] = [item for item in items if id(item) not in ephemeral_ids]
                 ephemeral_inputs.clear()
 
-            turn_meta = self._publish_usage(response.get("usage") or {})
+            turn_meta = self._publish_usage(response.get("usage") or {}, model_seconds=model_seconds)
             self._publish_plan_usage()
 
             output_items = [i for i in (response.get("output") or []) if isinstance(i, dict)]
@@ -547,7 +548,9 @@ class AgentRunner:
             f"{window:,} context tokens. Start a new chat to continue."
         )
 
-    def _publish_usage(self, usage: dict[str, Any]) -> dict[str, Any]:
+    def _publish_usage(
+        self, usage: dict[str, Any], *, model_seconds: float | None = None
+    ) -> dict[str, Any]:
         """Report this turn's token cost, and persist it against the conversation.
 
         ``context_window`` is an *input* budget (272000 = 400000 total less the
@@ -557,9 +560,8 @@ class AgentRunner:
         call, not a measure of the last one, and that is the number worth
         showing: it answers "will the next turn still fit".
 
-        Stores the model's output-only count with its response items. The UI
-        uses that for the small counter beneath an assistant message; the
-        total is still tracked separately for conversation accounting.
+        Stores the output-only count and model request rate with response items
+        for the footer. The conversation total is tracked separately.
         """
         input_tokens = usage.get("input_tokens")
         output_tokens = usage.get("output_tokens")
@@ -584,20 +586,24 @@ class AgentRunner:
             self._conversation.id, self._conversation.context_tokens, turn_total
         )
 
+        meta = {"context_tokens": context_tokens}
+        if type(output_tokens) is int and output_tokens > 0:
+            meta["output_tokens"] = output_tokens
+            if model_seconds is not None and model_seconds > 0:
+                meta["output_tokens_per_second"] = output_tokens / model_seconds
+
         self._publish(
             "usage",
             {
                 "run_tokens": self._run_tokens_used,
                 "turn_tokens": turn_total,
                 "output_tokens": output_tokens,
+                "output_tokens_per_second": meta.get("output_tokens_per_second"),
                 "total_tokens": self._conversation.total_tokens,
                 "context_tokens": context_tokens,
                 "context_window": window,
             },
         )
-        meta = {"context_tokens": context_tokens}
-        if isinstance(output_tokens, int) and output_tokens > 0:
-            meta["output_tokens"] = output_tokens
         return meta
 
     def _publish_plan_usage(self) -> None:
@@ -728,7 +734,7 @@ class AgentRunner:
             result += " No lower supported thinking level is available."
         return result
 
-    def _request_turn(self, items: list[dict[str, Any]]) -> dict[str, Any] | None:
+    def _request_turn(self, items: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, float]:
         body = {
             "model": self._run_model,
             "instructions": system_prompt.build(
@@ -760,10 +766,10 @@ class AgentRunner:
             body["service_tier"] = FAST_SERVICE_TIER
         elif self._conversation.flex_mode and self._model_supports_flex():
             body["service_tier"] = FLEX_SERVICE_TIER
+        started_at = perf_counter()
         chunks = self._send_model_request(body, stream=True)
-        if isinstance(chunks, dict):  # Defensive: stream=True should never buffer.
-            return chunks
-        return self._consume_stream(chunks)
+        response = chunks if isinstance(chunks, dict) else self._consume_stream(chunks)
+        return response, perf_counter() - started_at
 
     def _consume_stream(self, chunks: Iterator[bytes]) -> dict[str, Any] | None:
         """Publish deltas as they arrive; return the completed response object.

@@ -62,6 +62,7 @@ function resetLive() {
   state.liveText = null;
   state.liveReasoning = null;
   state.liveTodos = null;
+  state.lastTurnUsage = null;
   state.toolCards.clear();
 }
 
@@ -111,7 +112,7 @@ function connectStream(conversationId) {
   on("step", (data) => {
     // A fresh model turn: later text and tool calls belong in their own rows.
     finalizeLiveText();
-    state.lastTurnOutputTokens = null;
+    state.lastTurnUsage = null;
     setBusy(true, data.step > 1 ? `Working… (step ${data.step})` : "Working…");
   });
 
@@ -161,7 +162,10 @@ function connectStream(conversationId) {
       if (Number.isFinite(data.context_window)) state.active.context_window = data.context_window;
       if (Number.isFinite(data.total_tokens)) state.active.total_tokens = data.total_tokens;
     }
-    if (Number.isFinite(data.output_tokens)) state.lastTurnOutputTokens = data.output_tokens;
+    state.lastTurnUsage = {
+      outputTokens: data.output_tokens,
+      outputTokensPerSecond: data.output_tokens_per_second,
+    };
     updateUsage({
       contextTokens: data.context_tokens,
       contextWindow: data.context_window,

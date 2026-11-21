@@ -24,6 +24,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from codelite.agent import loop as agent_loop
 from codelite.agent.loop import AgentRunner
 from codelite.config import AppConfig
 from codelite.db.store import Store
@@ -96,6 +97,29 @@ def test_user_message_is_published_with_its_client_id(tmp_path: Path) -> None:
     )
     entry = runner._store.load_entries(runner._conversation.id)[0]
     assert entry["meta"]["message_id"] == "browser-message-1"
+
+
+def test_model_output_rate_is_published_and_saved(tmp_path: Path, monkeypatch) -> None:
+    events = []
+    session = FakeSession()
+    response = {
+        "output": [{
+            "type": "message", "role": "assistant",
+            "content": [{"type": "output_text", "text": "Hello"}],
+        }],
+        "usage": {"input_tokens": 64, "output_tokens": 20},
+    }
+    monkeypatch.setattr(session, "send_responses", lambda *_args, **_kwargs: response)
+    timestamps = iter((10.0, 12.5))
+    monkeypatch.setattr(agent_loop, "perf_counter", lambda: next(timestamps))
+    runner = _runner(tmp_path, session, lambda event, data: events.append((event, data)))
+    runner.run("Hello")
+
+    usage = next(data for event, data in events if event == "usage")
+    assert usage["output_tokens_per_second"] == 8.0
+    assistant = runner._store.load_entries(runner._conversation.id)[-1]
+    assert assistant["meta"]["output_tokens_per_second"] == 8.0
+    assert "output_tokens_per_second" not in runner._publish_usage({"total_tokens": 10}, model_seconds=1)
 
 
 def test_chosen_effort_is_sent(tmp_path: Path) -> None:

@@ -181,7 +181,7 @@ const state = {
   liveReasoningPending: "",
   liveReasoning: null,
   liveTodos: null,
-  lastTurnOutputTokens: null,
+  lastTurnUsage: null,
   toolCards: new Map(),
   permissionQueue: [],
   questionQueue: [],
