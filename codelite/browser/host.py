@@ -294,47 +294,56 @@ def _screenshot_backend() -> Callable[[WindowLike], bytes] | None:
     return capture_window_png if screenshots_available() else None
 
 
+def _prepare_gtk_browser() -> None:
+    """Configure the child process's GTK window before pywebview maps it."""
+    try:
+        from webview.platforms.gtk import BrowserView
+    except (ImportError, ValueError):
+        return  # pywebview can choose a different backend.
+
+    show = BrowserView.show
+
+    def show_in_background(view: Any) -> None:
+        window = view.window
+        window.set_decorated(False)
+        window.set_accept_focus(False)
+        window.set_focus_on_map(False)
+        window.set_skip_taskbar_hint(True)
+        window.set_skip_pager_hint(True)
+        composited = window.is_composited()
+        x11 = window.get_display().__gtype__.name == "GdkX11Display"
+        if not composited:
+            # X11 without a compositor ignores top-level opacity.
+            window.set_size_request(1, 1)
+            window.resize(1, 1)
+        elif not x11:
+            visual = window.get_screen().get_rgba_visual()
+            if visual is not None:
+                window.set_visual(visual)
+            window.props.opacity = 0.0
+
+        # The invisible window must not intercept clicks on the main app.
+        window.realize()
+        surface = window.get_window()
+        if composited and x11:
+            # Set opacity on the X11 surface, including the WebKit layers.
+            surface.set_opacity(0.0)
+        surface.set_pass_through(True)
+        show(view)
+
+    # pywebview 5 has no pre-show hook. This class belongs to the dedicated
+    # browser process, so the main app's window never uses this wrapper.
+    BrowserView.show = show_in_background
+
+
 def main() -> None:  # pragma: no cover - exercised manually, needs a real display
     import webview  # local import: only the child process needs this
 
-    # Not `hidden=True`, not off-screen -- a genuinely on-screen 1x1 window
-    # in the corner. Two separate bugs ruled out by hand along the way
-    # (verified under Xvfb + WebKitGTK, not just read in source):
-    #
-    # 1. pywebview's GTK backend only honors `hidden` through a code path that
-    #    runs before its own GTK main loop starts, which never happens for
-    #    this process's one and only ("master") window -- its `show()`
-    #    unconditionally schedules a real `show_all` once the loop is already
-    #    running, `hidden` or not. A window that is never actually shown
-    #    never fires pywebview's internal "shown"/"_pywebviewready" events
-    #    either, and every window method (`load_url`, `evaluate_js`) blocks on
-    #    exactly that event for up to 20s before raising
-    #    `WebViewException("Main window failed to start")`.
-    #
-    # 2. Showing the window and then calling `window.hide()` avoids that, but
-    #    creates a worse, silent problem: GTK unmaps the window, WebKit sees
-    #    that as the page going into the background, and sets
-    #    `document.hidden = true` / `visibilityState = "hidden"` -- which is
-    #    exactly the signal a great many real pages (virtualized lists,
-    #    requestAnimationFrame-driven hydration, lazy loading) use to pause
-    #    rendering entirely. Confirmed empirically: an rAF loop ran at ~0
-    #    frames while genuinely hidden.
-    #
-    # 3. Moving the window far off-screen instead (tried next) fixed both of
-    #    the above under every setup this could be tested against -- bare
-    #    Xvfb, Xvfb + a real reparenting WM (metacity), Xvfb + a compositing
-    #    WM (mutter) -- but still came back as bug 1's exact symptom for at
-    #    least one real user, on a GPU/driver combination (hardware-
-    #    accelerated Mesa) this sandbox has no GPU to reproduce. The
-    #    suspicion, unconfirmed: a window placed entirely outside every
-    #    monitor's bounds may never enter a compositor's accelerated-
-    #    compositing/exposure cycle on some driver stacks, which would starve
-    #    the same "shown"/"_pywebviewready" signal bug 1 depends on.
-    #
-    # A 1x1 window at (0, 0) sidesteps that uncertainty entirely: it is
-    # unambiguously a normal, on-screen, mapped window as far as any WM or
-    # GPU driver is concerned -- nothing about off-screen exposure to reason
-    # about -- while being too small to meaningfully notice.
+    # Keep the surface mapped and on-screen so GTK emits pywebview's ready
+    # event and WebKit keeps document.hidden false. Calling hide() pauses
+    # requestAnimationFrame, and off-screen placement can stall some drivers.
+    if sys.platform.startswith("linux"):
+        _prepare_gtk_browser()
     window = webview.create_window(
         "codelite-browser", "about:blank", width=1, height=1, x=0, y=0
     )

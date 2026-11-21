@@ -255,11 +255,10 @@ natives OS-Webview als Fenster (kein Electron). Apache-2.0, UI-Texte Englisch.
 
 ### `codelite/browser/` + `codelite/screenshot.py`
 
-- **host.py** – Child-Prozess mit **einem sichtbaren 1×1-Fenster** (nicht
-  `hidden=True`, nicht offscreen — ausführlich kommentierte Stolpersteine:
-  pywebview-GTK feuert `_pywebviewready` nie, `hide()` setzt
-  `document.hidden=true` und pausiert rAF-Loops, offscreen scheitert auf
-  manchen GPU-Stacks). `BrowserSession` (navigate/snapshot mit
+- **host.py** – Child-Prozess mit einem eingeblendeten GTK-Fenster, das
+  vor dem ersten Anzeigen transparent und klickdurchlässig gemacht wird.
+  X11 ohne Compositor nutzt ein rahmenloses 1×1-Fenster.
+  `BrowserSession` (navigate/snapshot mit
   `data-cl-ref`-Refs, max 400 Elemente, click/fill/evaluate/screenshot/
   reset), JSON-Lines über stdin/stdout, `dispatch()` wirft nie.
 - **client.py** – `BrowserClient`: Lazy-Start (gefrorren → eigenes Binary
@@ -380,11 +379,11 @@ wurde rückgängig gemacht und darf nicht wiederholt werden.
 - **pywebview 5.0.x** (Debian) kennt `webview.start(icon=…)` nicht → in
   `app/window.py` wird der Parameter nur übergeben, wenn die Signatur ihn
   hat; sonst stirbt der Start mit TypeError, bevor ein Fenster offen ist.
-- **Versteckte Fenster rendern nicht**: pywebview + WebKitGTK brauchen ein
-  sichtbares (wenn auch 1×1) Window; `hidden=True` oder offscreen killt
-  `_pywebviewready` bzw. `document.hidden` pausiert rAF-Loops. Details im
-  Kommentar in `browser/host.py` – dort auch: der GTK-Snapshot muss auf den
-  GTK-Main-Loop-Thread (`GLib.idle_add`).
+- **Browser-Fenster eingeblendet halten**: pywebview und WebKitGTK brauchen
+  eine eingeblendete Fläche auf dem Desktop. `hide()` setzt
+  `document.hidden=true` und pausiert rAF-Loops. Ein Fenster außerhalb des
+  Bildschirms kann auf manchen GPU-Stacks beim Start hängen.
+  Der GTK-Snapshot muss auf dem GTK-Main-Loop-Thread laufen (`GLib.idle_add`).
 - **`[hidden]` vs. Author-CSS**: eine eigene `display`-Regel (z. B.
   `display: flex` auf `.settings-row`, `.remote-actions-row`) schlägt die
   UA-Regel `[hidden]{display:none}`. Immer explizit
@@ -392,8 +391,8 @@ wurde rückgängig gemacht und darf nicht wiederholt werden.
   für `.overlay`, `.settings-row`, `.remote-actions-row`, …).
 - **Umgebung mit Display**: „headless“-Tests können trotzdem echte Fenster
   öffnen. `tests/test_browser.py` stubt deshalb den Browser-Client
-  (`_no_browser(monkeypatch)`) – sonst startet der Hidden-Browser und lädt
-  die Test-URL sichtbar. Neue Tool-Tests genauso stubben.
+  (`_no_browser(monkeypatch)`), damit weder der Browser-Prozess noch ein
+  natives Testfenster startet. Neue Tool-Tests genauso stubben.
 - **Windows**: WebView2-Runtime muss vorhanden sein; pywebview startet sonst
   mit einer CLR-Exception, die nicht fangbar ist (`app/window.py` prüft die
   Registry vorab).
