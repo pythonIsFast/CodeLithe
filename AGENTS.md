@@ -263,8 +263,9 @@ natives OS-Webview als Fenster (kein Electron). Apache-2.0, UI-Texte Englisch.
   `data-cl-ref`-Refs, max 400 Elemente, click/fill/evaluate/screenshot/
   reset), JSON-Lines über stdin/stdout, `dispatch()` wirft nie.
 - **client.py** – `BrowserClient`: Lazy-Start (gefrorren → eigenes Binary
-  mit `--browser-host`), `call()` serialized, Timeout aus Settings,
-  Desync-Schutz bei Late-Antworten, Singleton `get_client()/close_client()`.
+  mit `--browser-host`), serielle Pipe-Kommunikation über einen Worker,
+  Timeout aus Settings. Ein blockierter Helfer wird beendet und beim
+  nächsten Aufruf neu gestartet. Singleton `get_client()/close_client()`.
 - **screenshot.py** – WebKitGTK-only: 4.1 → 4.0-Fallback; greift auf das
   echte `WebKit2.WebView` zu, Snapshot per `GLib.idle_add` auf dem
   GTK-Main-Loop-Thread. Geteilt zwischen `--screenshot` und dem

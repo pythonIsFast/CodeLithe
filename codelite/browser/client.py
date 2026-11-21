@@ -23,11 +23,14 @@ from __future__ import annotations
 
 import atexit
 import json
+import os
 import queue
+import signal
 import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -66,7 +69,9 @@ class BrowserClient:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._proc: subprocess.Popen[str] | None = None
-        self._queue: queue.Queue[str | None] = queue.Queue()
+        self._commands: queue.SimpleQueue[str | None] = queue.SimpleQueue()
+        self._responses: queue.SimpleQueue[str | None] = queue.SimpleQueue()
+        self._errors: deque[str] = deque(maxlen=8)
         self._next_id = 0
 
     def _child_command(self) -> list[str]:
@@ -89,6 +94,7 @@ class BrowserClient:
     def _ensure_started(self) -> None:
         if self._proc is not None and self._proc.poll() is None:
             return
+        self._stop_process()
         command = self._child_command()
         try:
             self._proc = subprocess.Popen(
@@ -98,19 +104,67 @@ class BrowserClient:
                 stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1,
+                start_new_session=os.name == "posix",
             )
         except OSError as error:
             raise BrowserError(f"Could not start the browser process: {error}") from error
-        self._queue = queue.Queue()
-        threading.Thread(target=self._read_loop, args=(self._proc,), daemon=True).start()
+        self._commands = queue.SimpleQueue()
+        self._responses = queue.SimpleQueue()
+        self._errors = deque(maxlen=8)
+        # Both pipe operations can block. Each helper owns its own queues, so
+        # a worker from a timed-out process can't answer on the next one.
+        threading.Thread(
+            target=self._exchange, args=(self._proc, self._commands, self._responses), daemon=True,
+        ).start()
+        threading.Thread(
+            target=self._drain_errors, args=(self._proc, self._errors), daemon=True,
+        ).start()
 
-    def _read_loop(self, proc: subprocess.Popen[str]) -> None:
-        assert proc.stdout is not None
-        for line in proc.stdout:
-            self._queue.put(line)
-        # The process ended; wake up whichever call() is still waiting rather
-        # than leaving it blocked on a line that will never arrive.
-        self._queue.put(None)
+    @staticmethod
+    def _exchange(
+        proc: subprocess.Popen[str],
+        commands: queue.SimpleQueue[str | None],
+        responses: queue.SimpleQueue[str | None],
+    ) -> None:
+        assert proc.stdin is not None and proc.stdout is not None
+        try:
+            with proc.stdin, proc.stdout:
+                while (payload := commands.get()) is not None:
+                    proc.stdin.write(payload + "\n")
+                    proc.stdin.flush()
+                    line = proc.stdout.readline()
+                    if not line:
+                        return
+                    responses.put(line)
+        except (OSError, ValueError):
+            pass
+        finally:
+            responses.put(None)
+
+    @staticmethod
+    def _drain_errors(proc: subprocess.Popen[str], errors: deque[str]) -> None:
+        assert proc.stderr is not None
+        with proc.stderr:
+            while line := proc.stderr.readline(1024):
+                errors.append(line)
+
+    def _stop_process(self) -> None:
+        """Discard the helper and any renderer it started. Caller holds _lock."""
+        proc, self._proc = self._proc, None
+        if proc is None:
+            return
+        self._commands.put(None)
+        try:
+            if os.name == "posix":
+                os.killpg(proc.pid, signal.SIGKILL)
+            elif proc.poll() is None:
+                proc.kill()
+        except ProcessLookupError:
+            pass
+        try:
+            proc.wait(timeout=0.2)
+        except subprocess.TimeoutExpired:
+            pass
 
     def _timeout(self) -> float:
         try:
@@ -125,55 +179,41 @@ class BrowserClient:
         a time, matching how the host reads one line, replies, then reads the
         next -- there is no request id multiplexing on the wire.
         """
-        with self._lock:
+        timeout = self._timeout()
+        deadline = time.monotonic() + timeout
+        if not self._lock.acquire(timeout=timeout):
+            raise BrowserError("The browser is busy with another action. Try again.")
+        try:
+            if time.monotonic() >= deadline:
+                raise BrowserError("The browser is busy with another action. Try again.")
             self._ensure_started()
-            assert self._proc is not None and self._proc.stdin is not None
             self._next_id += 1
             request_id = self._next_id
             payload = json.dumps({"id": request_id, "action": action, **params})
+            self._commands.put(payload)
             try:
-                self._proc.stdin.write(payload + "\n")
-                self._proc.stdin.flush()
-            except (BrokenPipeError, ValueError, OSError) as error:
-                raise BrowserError(f"The browser process is not available: {error}") from error
-
-            deadline = time.monotonic() + self._timeout()
-            while True:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise BrowserError(
-                        f"The browser did not respond to `{action}` within the "
-                        "configured timeout."
-                    )
-                try:
-                    line = self._queue.get(timeout=remaining)
-                except queue.Empty:
-                    raise BrowserError(
-                        f"The browser did not respond to `{action}` within the "
-                        "configured timeout."
-                    ) from None
-
-                if line is None:
-                    stderr = ""
-                    if self._proc is not None and self._proc.stderr is not None:
-                        stderr = self._proc.stderr.read().strip()
-                    detail = f" {stderr}" if stderr else ""
-                    raise BrowserError(f"The browser process exited unexpectedly.{detail}")
-
-                try:
-                    response = json.loads(line)
-                except ValueError as error:
-                    raise BrowserError(
-                        f"The browser sent an unreadable response: {error}"
-                    ) from error
-
-                if isinstance(response, dict) and response.get("id") == request_id:
-                    break
-                # A response to a call this client already gave up waiting on
-                # (it timed out, but the host answered late) -- discard it and
-                # keep waiting for the one that actually matches. Without this
-                # every later call would desync forever off this one leftover
-                # line.
+                line = self._responses.get(timeout=max(0.0, deadline - time.monotonic()))
+            except queue.Empty:
+                self._stop_process()
+                raise BrowserError(
+                    f"Browser `{action}` timed out after {timeout:g} seconds. "
+                    "The browser session was reset. Navigate to the page again."
+                ) from None
+            if line is None:
+                self._stop_process()
+                stderr = "".join(self._errors.copy()).strip()
+                detail = f" {stderr}" if stderr else ""
+                raise BrowserError(f"The browser process stopped responding.{detail}")
+            try:
+                response = json.loads(line)
+            except ValueError as error:
+                self._stop_process()
+                raise BrowserError("The browser sent an unreadable response. Its session was reset.") from error
+            if not isinstance(response, dict) or response.get("id") != request_id:
+                self._stop_process()
+                raise BrowserError("The browser sent an unexpected response. Its session was reset.")
+        finally:
+            self._lock.release()
 
         if not response.get("ok"):
             raise BrowserError(response.get("error") or f"`{action}` failed.")
@@ -181,16 +221,16 @@ class BrowserClient:
 
     def close(self) -> None:
         with self._lock:
-            proc, self._proc = self._proc, None
-        if proc is None or proc.poll() is not None:
-            return
-        try:
-            if proc.stdin is not None:
-                proc.stdin.write(json.dumps({"id": 0, "action": "shutdown"}) + "\n")
-                proc.stdin.flush()
-            proc.wait(timeout=3)
-        except Exception:  # noqa: BLE001 - closing must not raise, only clean up
-            proc.kill()
+            proc = self._proc
+            if proc is None:
+                return
+            if proc.poll() is None:
+                self._commands.put(json.dumps({"id": 0, "action": "shutdown"}))
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    pass
+            self._stop_process()
 
 
 _lock = threading.Lock()

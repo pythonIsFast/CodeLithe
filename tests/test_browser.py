@@ -22,10 +22,13 @@ permission gating in the tool itself.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 
-from codelite.browser.client import BrowserError
+import pytest
+
+from codelite.browser.client import BrowserClient, BrowserError
 from codelite.browser.host import BrowserActionError, BrowserSession, dispatch
 from codelite.permission.manager import PermissionDenied, PermissionManager
 from codelite.permission.modes import Mode
@@ -186,6 +189,38 @@ def test_dispatch_turns_an_exception_into_an_error_reply() -> None:
     response = dispatch(BrowserSession(FakeWindow()), {"id": 1, "action": "click", "ref": "x"})
     assert response["ok"] is False
     assert "id" in response and response["id"] == 1
+
+
+@pytest.mark.parametrize("stop_reading", [False, True])
+def test_client_restarts_after_timeout(monkeypatch, stop_reading: bool) -> None:
+    # Stop before reading a large command, or after reading it. Both pipe
+    # operations must be covered by the deadline.
+    program = """
+import json, sys, time
+for line in sys.stdin:
+    command = json.loads(line)
+    action = command["action"]
+    if action == "evaluate":
+        time.sleep(60)
+    print(json.dumps({"id": command["id"], "ok": True, "result": action}), flush=True)
+    if action == "stop_reading":
+        time.sleep(60)
+    if action == "shutdown":
+        break
+"""
+    client = BrowserClient()
+    monkeypatch.setattr(client, "_child_command", lambda: [sys.executable, "-c", program])
+    try:
+        first = "stop_reading" if stop_reading else "navigate"
+        assert client.call(first) == first
+        monkeypatch.setattr(client, "_timeout", lambda: 0.25)
+        with pytest.raises(BrowserError, match=r"evaluate.*timed out.*session was reset"):
+            client.call("evaluate", script="x" * 1_000_000)
+        assert client._proc is None
+        monkeypatch.setattr(client, "_timeout", lambda: 5.0)
+        assert client.call("navigate") == "navigate"
+    finally:
+        client.close()
 
 
 # -- the tool itself: permission gating ---------------------------------------

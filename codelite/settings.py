@@ -226,8 +226,8 @@ SETTINGS: tuple[Setting, ...] = (
         kind="float",
         default=30.0,
         group="integrations",
-        help="How long to wait for the hidden browser to answer one action "
-        "(navigate, click, a screenshot). A slow page may need more.",
+        help="How long to wait for a browser action. A blocked browser session "
+        "is reset after this timeout.",
         minimum=5,
         maximum=180,
         unit="s",
