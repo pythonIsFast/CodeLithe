@@ -14,7 +14,7 @@ function renderAuth(auth) {
     : (auth.authenticated
       ? (auth.email && auth.email !== label ? auth.email : "Connected with ChatGPT")
       : "Connect your ChatGPT subscription to use CodeLithe.");
-  el.authOverlay.hidden = Boolean(ready || auth.opencode_go);
+  el.authOverlay.hidden = Boolean(ready || auth.opencode_go || auth.custom_providers);
 
   const waiting = auth.login_status === "waiting";
   el.authLogin.disabled = waiting;

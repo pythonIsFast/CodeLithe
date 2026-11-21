@@ -38,6 +38,7 @@ from .. import settings
 from ..config import FAST_SERVICE_TIER, FLEX_SERVICE_TIER, AppConfig, context_window_for, normalize_effort
 from ..db.store import Conversation, Store
 from ..permission.manager import PermissionDenied, PermissionManager
+from ..provider.custom import is_custom_model
 from ..provider.opencode_go import is_go_model
 from ..provider.pollinations import POLLINATIONS_MODEL
 from ..provider.session import Session
@@ -172,7 +173,8 @@ class AgentRunner:
         self._run_tokens_used = 0
         self._run_model = (
             POLLINATIONS_MODEL
-            if self._config.use_pollinations_free and not is_go_model(self._conversation.model)
+            if self._config.use_pollinations_free
+            and not (is_go_model(self._conversation.model) or is_custom_model(self._conversation.model))
             else self._conversation.model
         )
         # Whatever the user picked holds for the whole run. Auto may replace it
@@ -424,7 +426,7 @@ class AgentRunner:
         run's own model is guaranteed to fit: that history already fits
         there today, which is the only reason it hasn't failed outright.
         """
-        if is_go_model(self._run_model):
+        if is_go_model(self._run_model) or is_custom_model(self._run_model):
             return self._run_model
         configured = self._config.compaction_model
         if configured == self._run_model:
@@ -635,7 +637,7 @@ class AgentRunner:
         for a different one, would earn an HTTP 400 instead of a slower turn.
         Falling back to the model's own default is the useful failure.
         """
-        if not effort:
+        if not effort or is_custom_model(self._run_model):
             return ""
         try:
             allowed = self._session.model_capabilities(self._run_model).get("efforts")

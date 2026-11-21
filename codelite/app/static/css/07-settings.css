@@ -203,7 +203,7 @@
 .settings-dialog .auth-status:empty, #go-key-status:empty { display: none; }
 .settings-panel.danger .settings-card { border-color: rgb(229 83 75 / 42%); }
 .behaviour-control { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.settings-panel textarea, #go-keys input, .remote-value-row input {
+.settings-panel textarea, #go-keys input, .remote-value-row input, #custom-provider-form input {
   max-width: 100%;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
@@ -217,6 +217,14 @@
   font: 12px/1.5 var(--mono);
 }
 .settings-panel .field { margin-top: 12px; }
+#custom-provider-form .field { display: block; margin-bottom: 5px; }
+#custom-provider-form input { width: 100%; color: var(--text); }
+#custom-provider-form button[hidden] { display: none; }
+#custom-provider-list .settings-row + .settings-row {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
 .settings-panel .btn { background: var(--bg); border-color: var(--border-strong); }
 .settings-panel .btn:hover { background: var(--bg-hover); }
 .settings-panel .btn.primary {

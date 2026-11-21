@@ -100,6 +100,10 @@ async function copyRemoteValue(input, label) {
 }
 
 async function loadBankedResets() {
+  if (!state.auth?.authenticated) {
+    el.bankedResets.hidden = true;
+    return;
+  }
   el.bankedResetsRedeem.disabled = true;
   el.bankedResetsStatus.textContent = "Checking…";
   try {
@@ -256,6 +260,9 @@ function selectSettingsTab(name, { clearSearch = true } = {}) {
     loadGoSettings().catch((error) => toast(error.message, true));
     refreshGoUsage();
   }
+  if (state.settingsTab === "custom-providers") {
+    loadCustomProviders().catch((error) => toast(error.message, true));
+  }
   if (state.settingsTab === "model-picker") renderModelVisibility();
 }
 
@@ -343,6 +350,7 @@ async function openSettings(tab = state.settingsTab || "account") {
 function closeSettings() {
   el.settingsOverlay.hidden = true;
   $("go-keys").reset();
+  editCustomProvider();
   state.settingsOpener?.focus();
 }
 
@@ -405,7 +413,7 @@ async function saveGoKeys(changes) {
     form.reset();
     status.textContent = "Keys saved.";
     const auth = await refreshAuth();
-    if (auth.authenticated || auth.free_mode || auth.opencode_go) {
+    if (auth.authenticated || auth.free_mode || auth.opencode_go || auth.custom_providers) {
       await loadAuthenticatedApp();
     } else if (state.appLoaded) {
       await loadModels();
@@ -416,6 +424,115 @@ async function saveGoKeys(changes) {
   } finally {
     controls.forEach((control) => { control.disabled = false; });
     loadGoSettings().catch((error) => toast(error.message, true));
+  }
+}
+
+function editCustomProvider(provider = null) {
+  const form = $("custom-provider-form");
+  form.reset();
+  form.dataset.providerId = provider?.id || "";
+  $("custom-provider-heading").textContent = provider ? "Edit provider" : "Add a provider";
+  $("custom-provider-name").value = provider?.name || "";
+  $("custom-provider-url").value = provider?.base_url || "";
+  $("custom-provider-models").value = provider?.model_ids.join("\n") || "";
+  $("custom-provider-key-hint").hidden = !provider?.api_key_configured;
+  $("custom-provider-cancel").hidden = !provider;
+  $("custom-provider-status").textContent = "";
+}
+
+async function loadCustomProviders() {
+  const { providers } = await get("/api/settings/custom-providers");
+  const list = $("custom-provider-list");
+  list.replaceChildren();
+  if (!providers.length) {
+    const empty = document.createElement("p");
+    empty.className = "account-detail";
+    empty.textContent = "No custom providers added.";
+    list.append(empty);
+    return;
+  }
+  for (const provider of providers) {
+    const row = document.createElement("div");
+    row.className = "settings-row";
+    const info = document.createElement("div");
+    info.className = "settings-row-text";
+    const title = document.createElement("div");
+    title.className = "settings-row-title";
+    title.textContent = provider.name;
+    const endpoint = document.createElement("div");
+    endpoint.className = "account-detail";
+    endpoint.textContent = `${provider.base_url} · ${provider.api_key_configured ? "Key saved" : "No key"}`;
+    info.append(title, endpoint);
+    const buttons = document.createElement("div");
+    buttons.className = "settings-row-control";
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "btn";
+    edit.textContent = "Edit";
+    edit.addEventListener("click", () => {
+      editCustomProvider(provider);
+      $("custom-provider-name").focus();
+    });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "btn";
+    remove.textContent = "Remove";
+    remove.addEventListener("click", async () => {
+      if (!confirm(`Remove ${provider.name} and its API key?`)) return;
+      remove.disabled = true;
+      try {
+        await del(`/api/settings/custom-providers/${provider.id}`);
+        if ($("custom-provider-form").dataset.providerId === provider.id) editCustomProvider();
+        await refreshCustomProviders();
+      } catch (error) {
+        toast(error.message, true);
+      } finally {
+        remove.disabled = false;
+      }
+    });
+    buttons.append(edit, remove);
+    row.append(info, buttons);
+    list.append(row);
+  }
+}
+
+async function refreshCustomProviders() {
+  await loadCustomProviders();
+  const auth = await refreshAuth();
+  if (auth.authenticated || auth.free_mode || auth.opencode_go || auth.custom_providers) {
+    await loadAuthenticatedApp();
+  } else if (state.appLoaded) {
+    await loadModels();
+  }
+}
+
+async function saveCustomProvider(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const id = form.dataset.providerId;
+  const payload = {
+    name: $("custom-provider-name").value.trim(),
+    base_url: $("custom-provider-url").value.trim(),
+    model_ids: $("custom-provider-models").value.split("\n").map((id) => id.trim()).filter(Boolean),
+  };
+  const key = $("custom-provider-key").value.trim();
+  if (key) payload.api_key = key;
+  const controls = [...form.elements];
+  const status = $("custom-provider-status");
+  controls.forEach((control) => { control.disabled = true; });
+  try {
+    const path = "/api/settings/custom-providers";
+    await api(id ? `${path}/${id}` : path, {
+      method: id ? "PUT" : "POST",
+      body: JSON.stringify(payload),
+    });
+    editCustomProvider();
+    status.textContent = "Provider saved.";
+    await refreshCustomProviders();
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    controls.forEach((control) => { control.disabled = false; });
   }
 }
 

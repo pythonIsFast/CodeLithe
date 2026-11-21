@@ -20,6 +20,7 @@
         ('models', 'Models & accounts', [
           ('account', 'ChatGPT', 'Manage your ChatGPT connection and banked rate-limit resets.'),
           ('opencode-go', 'OpenCode Go', 'Manage inference credentials and track your Go allowance.'),
+          ('custom-providers', 'Custom providers', 'Connect OpenAI-compatible APIs and choose their models.'),
           ('model-picker', 'Model picker', 'Choose which models appear in the composer.')]),
         ('agent', 'Agent', []),
         ('workspace', 'Workspace', [
@@ -84,6 +85,32 @@
               </div>
               <div id="go-usage" role="status"></div>
             </div>
+          </section>
+          <section class="settings-panel" data-settings-panel="custom-providers" hidden>
+            <div id="custom-provider-list" class="settings-block"></div>
+            <form id="custom-provider-form" class="settings-block" autocomplete="off">
+              <h4 id="custom-provider-heading" class="settings-row-title">Add a provider</h4>
+              <label class="field" for="custom-provider-name">Name</label>
+              <input id="custom-provider-name" required maxlength="80" placeholder="My provider" />
+              <label class="field" for="custom-provider-url">API base URL</label>
+              <input type="url" id="custom-provider-url" required maxlength="2048"
+                     placeholder="https://provider.example/v1" />
+              <p class="account-detail">Base URLs use Chat Completions. Paste the full /responses URL to use the Responses API.</p>
+              <label class="field" for="custom-provider-key">API key</label>
+              <input type="password" id="custom-provider-key" autocomplete="new-password"
+                     maxlength="4096" placeholder="Optional for endpoints without authentication" />
+              <p class="account-detail" id="custom-provider-key-hint" hidden>
+                Leave the API key blank to keep it for the same endpoint. Changing the URL clears the old key.
+              </p>
+              <label class="field" for="custom-provider-models">Model IDs</label>
+              <textarea id="custom-provider-models" rows="3" placeholder="Leave empty to load models from the endpoint"></textarea>
+              <p class="account-detail">Enter one model ID per line to use a specific list.</p>
+              <div class="settings-block-actions">
+                <button type="button" class="btn" id="custom-provider-cancel" hidden>Cancel edit</button>
+                <button type="submit" class="btn primary">Save provider</button>
+              </div>
+              <p id="custom-provider-status" class="auth-status" role="status"></p>
+            </form>
           </section>
           <section class="settings-panel" data-settings-panel="model-picker" hidden>
             <p class="account-detail">Choose which models appear in the composer. Existing chats keep their selected model.</p>

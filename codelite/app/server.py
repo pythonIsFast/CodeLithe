@@ -49,7 +49,9 @@ from ..settings import schema as behaviour_schema
 from ..updater import UpdateError, check_update, install_update
 from ..permission.modes import Mode
 from ..provider.auth import AuthError
+from ..provider.custom import is_custom_model
 from ..provider.login import ChatGPTLoginManager
+from ..provider.opencode_go import is_go_model
 from ..provider.pollinations import POLLINATIONS_MODEL
 from ..provider.transport import UpstreamError
 from ..remote import REMOTE_COOKIE, RemoteError, RemoteManager
@@ -273,7 +275,7 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
             errors.append("Could not load ChatGPT models.")
             if login_manager().status().get("authenticated"):
                 slugs.append("auto")
-                if not runtime.config.agent_model.startswith("opencode-go/"):
+                if not (is_go_model(runtime.config.agent_model) or is_custom_model(runtime.config.agent_model)):
                     slugs.append(runtime.config.agent_model)
 
         labels = {"auto": "Auto"}
@@ -284,6 +286,12 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
                 capabilities[model] = session.model_capabilities(model)
         except (OSError, ValueError, RuntimeError) as error:
             errors.append(str(error))
+
+        custom_models, custom_errors = session.custom_providers.catalog()
+        slugs.extend(custom_models)
+        labels.update(custom_models)
+        capabilities.update({model: session.model_capabilities(model) for model in custom_models})
+        errors.extend(custom_errors)
 
         return {
             "models": list(dict.fromkeys(slugs)),
@@ -308,6 +316,25 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
             return jsonify({"error": "Invalid hidden model list."}), 400
         rt().store.set_state("hidden_picker_models", list(dict.fromkeys(hidden)))
         return jsonify({"saved": True})
+
+    @app.route("/api/settings/custom-providers", methods=["GET", "POST"])
+    @app.route("/api/settings/custom-providers/<provider_id>", methods=["PUT", "DELETE"])
+    def custom_provider_settings(provider_id=None):
+        providers = rt().session.custom_providers
+        if request.method == "GET":
+            return jsonify({"providers": providers.list()})
+        if remote_manager().is_remote_host(request.host):
+            return jsonify({"error": "Manage custom providers in the local CodeLithe window."}), 403
+        try:
+            if request.method == "DELETE":
+                providers.delete(provider_id)
+                return jsonify({"deleted": True})
+            saved = providers.save(_body(), provider_id)
+        except KeyError:
+            return jsonify({"error": "Custom provider not found."}), 404
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        return jsonify(saved), 201 if request.method == "POST" else 200
 
     @app.route("/api/settings/opencode-go", methods=["GET", "PUT"])
     def opencode_go_settings():
@@ -382,6 +409,7 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
         status = login_manager().status()
         status["free_mode"] = rt().config.use_pollinations_free
         status["opencode_go"] = rt().session.opencode_go.status()["api_key_configured"]
+        status["custom_providers"] = rt().session.custom_providers.configured()
         return jsonify(status)
 
     @app.post("/api/auth/login")

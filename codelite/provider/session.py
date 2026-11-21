@@ -35,6 +35,7 @@ from .chat import (
     stream_responses_as_chat_completion_chunks,
 )
 from .config import ProviderConfig
+from .custom import CustomProviders, is_custom_model
 from .limits import RateLimits
 from .opencode_go import OpenCodeGo, is_go_model
 from .pollinations import POLLINATIONS_MODEL, PollinationsTransport
@@ -60,6 +61,7 @@ class Session:
         self._transport = CodexTransport(self.config, self._resolve_auth)
         self._pollinations = PollinationsTransport()
         self.opencode_go = OpenCodeGo(self.config.auth_file_path.with_name("opencode-go.json"))
+        self.custom_providers = CustomProviders(self.config.auth_file_path.with_name("custom-providers.json"))
         self.use_pollinations_free = False
 
     def _resolve_auth(self) -> EffectiveAuth:
@@ -89,7 +91,7 @@ class Session:
         Empty lists when the catalog is unreachable, so a caller falls back
         rather than offering a level the model would reject.
         """
-        if is_go_model(model) or self.use_pollinations_free:
+        if is_go_model(model) or is_custom_model(model) or self.use_pollinations_free:
             return {"efforts": [], "default_effort": "", "fast": False, "flex": False}
         info = self._transport.resolve_model_info(model)
         if info is None:
@@ -120,6 +122,8 @@ class Session:
         ``None`` when the catalog is unreachable or does not know the model --
         callers should fall back rather than substitute a guess.
         """
+        if is_custom_model(model):
+            return None
         if is_go_model(model):
             info = self.opencode_go.models().get(model, {})
             window = (info.get("limit") or {}).get("context")
@@ -137,6 +141,8 @@ class Session:
         self, body: dict[str, Any], *, stream: bool = False, session_id: str = ""
     ) -> dict[str, Any] | Iterator[bytes]:
         """Send a raw Responses-shaped request through the active provider."""
+        if is_custom_model(body.get("model")):
+            return self.custom_providers.send(body, stream=stream)
         if is_go_model(body.get("model")):
             return self.opencode_go.send(body, stream=stream, session_id=session_id)
         if self.use_pollinations_free:

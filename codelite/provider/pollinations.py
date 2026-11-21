@@ -49,7 +49,9 @@ def _content(content: Any) -> Any:
     return "\n".join(parts)
 
 
-def responses_to_chat(body: dict[str, Any]) -> dict[str, Any]:
+def responses_to_chat(
+    body: dict[str, Any], *, model: str = POLLINATIONS_MODEL, include_images: bool = False,
+) -> dict[str, Any]:
     messages: list[dict[str, Any]] = []
     instructions = body.get("instructions")
     if isinstance(instructions, str) and instructions:
@@ -94,7 +96,17 @@ def responses_to_chat(body: dict[str, Any]) -> dict[str, Any]:
             continue
         role = item.get("role")
         if role in ("user", "assistant", "system", "developer"):
-            messages.append({"role": role, "content": _content(item.get("content"))})
+            content = item.get("content")
+            converted = _content(content)
+            if include_images and role == "user" and isinstance(content, list):
+                images = [
+                    {"type": "image_url", "image_url": {"url": part["image_url"]}}
+                    for part in content if isinstance(part, dict)
+                    and part.get("type") == "input_image" and isinstance(part.get("image_url"), str)
+                ]
+                if images:
+                    converted = ([{"type": "text", "text": converted}] if converted else []) + images
+            messages.append({"role": role, "content": converted})
     flush_calls()
 
     tools = []
@@ -113,7 +125,7 @@ def responses_to_chat(body: dict[str, Any]) -> dict[str, Any]:
         )
 
     request: dict[str, Any] = {
-        "model": POLLINATIONS_MODEL,
+        "model": model,
         "messages": messages,
         "stream": False,
     }
@@ -126,7 +138,7 @@ def responses_to_chat(body: dict[str, Any]) -> dict[str, Any]:
     return request
 
 
-def chat_to_responses(payload: dict[str, Any]) -> dict[str, Any]:
+def chat_to_responses(payload: dict[str, Any], *, model: str = POLLINATIONS_MODEL) -> dict[str, Any]:
     choices = payload.get("choices") or []
     message = choices[0].get("message") if choices and isinstance(choices[0], dict) else {}
     message = message if isinstance(message, dict) else {}
@@ -158,13 +170,13 @@ def chat_to_responses(payload: dict[str, Any]) -> dict[str, Any]:
         )
 
     usage = payload.get("usage") or {}
-    input_tokens = usage.get("prompt_tokens", 0)
-    output_tokens = usage.get("completion_tokens", 0)
+    input_tokens = usage.get("prompt_tokens") or 0
+    output_tokens = usage.get("completion_tokens") or 0
     return {
         "id": payload.get("id") or f"resp_{uuid.uuid4().hex}",
         "object": "response",
         "status": "completed",
-        "model": POLLINATIONS_MODEL,
+        "model": model,
         "output": output,
         "output_text": text if isinstance(text, str) else "",
         "usage": {

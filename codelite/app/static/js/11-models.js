@@ -49,6 +49,7 @@ function effortsFor(model) {
     const capability = state.capabilities[model];
     if (capability && Array.isArray(capability.efforts)) return capability.efforts;
   }
+  if (model?.startsWith("custom/")) return [];
   return state.efforts;
 }
 

@@ -57,7 +57,7 @@ async function init() {
   loadRemote().catch(() => {});
   startClock();
   const auth = await refreshAuth();
-  if (auth.authenticated || auth.free_mode || auth.opencode_go) {
+  if (auth.authenticated || auth.free_mode || auth.opencode_go || auth.custom_providers) {
     await loadAuthenticatedApp();
   } else {
     setBusy(false);

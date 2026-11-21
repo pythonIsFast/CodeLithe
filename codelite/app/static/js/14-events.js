@@ -42,6 +42,9 @@ function wireEvents() {
   });
 
   $("auth-opencode-go").addEventListener("click", () => openSettings("opencode-go"));
+  $("auth-custom-provider").addEventListener("click", () => openSettings("custom-providers"));
+  $("custom-provider-form").addEventListener("submit", saveCustomProvider);
+  $("custom-provider-cancel").addEventListener("click", () => editCustomProvider());
   $("go-keys").addEventListener("submit", (event) => {
     event.preventDefault();
     const changes = {};

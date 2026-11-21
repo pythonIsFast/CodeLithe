@@ -111,6 +111,7 @@ py -3 -m venv .venv
 - **Manage long conversations.** See context usage and compact older working context while keeping the original transcript available.
 - **Choose the model.** Select a model and supported reasoning effort, or use Auto routing. The model picker settings let you hide models you rarely use.
 - **Connect OpenCode Go from source.** The current `main` branch supports OpenCode Go alongside ChatGPT. Add the inference key under **Settings → Models & accounts → OpenCode Go**. A separate service account key with **Usage: Read** lets CodeLithe retrieve your Go allowance.
+- **Add custom providers from source.** Use **Settings → Models & accounts → Custom providers** to add multiple OpenAI-compatible endpoints. Give each provider a name, an API base URL such as `https://provider.example/v1`, and an API key if required. Paste the full `/responses` URL for the Responses API. Leave model IDs blank for discovery or enter one ID per line. The models then appear alongside ChatGPT and OpenCode Go.
 - **Use code intelligence and extensions.** Connect language servers, MCP servers, project skills, and local Python tools. Search the web or open JavaScript-rendered pages in a separate system webview.
 - **Bring existing work along.** Import readable Codex CLI history from **Settings → Application → Import conversations**. Optional **Remote Control** opens the UI through a password-protected tunnel while the agent keeps running on your computer.
 

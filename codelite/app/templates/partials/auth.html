@@ -2,13 +2,14 @@
     <div class="dialog auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title">
       <img class="auth-logo" src="{{ url_for('static', filename='icon.png') }}" alt="" />
       <h2 id="auth-title">Welcome to CodeLithe</h2>
-      <p>Connect ChatGPT or OpenCode Go to use your subscription. Your credentials stay on this device.</p>
+      <p>Connect a model provider to start a session.</p>
       <button type="button" class="chatgpt-button" id="auth-login">
         <span class="chatgpt-mark" aria-hidden="true">✦</span>
         <span>Sign in with ChatGPT</span>
       </button>
       <button type="button" class="btn" id="auth-free">Use for free with Pollinations</button>
       <button type="button" class="btn" id="auth-opencode-go">Set up OpenCode Go</button>
+      <button type="button" class="btn" id="auth-custom-provider">Add a custom provider</button>
       <div class="auth-manual" id="auth-manual" hidden>
         <a class="btn" id="auth-open-link" target="_blank" rel="noopener">Open login page</a>
         <button type="button" class="btn" id="auth-copy-link">Copy login link</button>

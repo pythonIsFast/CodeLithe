@@ -251,7 +251,7 @@ async function saveBehaviour(values) {
   state.meta = await get("/api/meta");
   await loadModels();
   const freeChanged = previousFree !== Boolean(data.values.use_pollinations_free);
-  if (freeChanged && state.active && !state.active.model.startsWith("opencode-go/")) {
+  if (freeChanged && state.active && !/^(opencode-go|custom)\//.test(state.active.model)) {
     const model = data.values.use_pollinations_free ? "openai-fast" : state.meta.default_model;
     state.active = await patch(`/api/conversations/${state.active.id}`, { model });
     ensureModelOption(model);
