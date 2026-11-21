@@ -7,13 +7,61 @@ const escapeHtml = (text) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 /**
- * A deliberately tiny Markdown subset: fenced code, inline code, bold, and
- * bullet lists. Enough for an agent's output without shipping a parser.
+ * A small Markdown subset for chat messages, including tables and fenced code.
  */
 function inlineMarkdown(text) {
   return escapeHtml(text)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+}
+
+function markdownTableCells(line) {
+  if (!line?.includes("|")) return null;
+  // Some models escape the opening pipe and use backslash line breaks.
+  const row = line.trim().replace(/^\\\|/, "|").replace(/\|\s*\\$/, "|");
+  const cells = [""];
+  let lastToken = "";
+  for (const [token] of row.matchAll(/`[^`]+`|\\[\\|]|\||[^`\\|]+|[`\\]/g)) {
+    if (token === "|") {
+      cells.push("");
+    } else {
+      cells[cells.length - 1] += token.replace(/\\([\\|])/g, "$1");
+    }
+    lastToken = token;
+  }
+  if (cells.length === 1) return null;
+  if (row.startsWith("|")) cells.shift();
+  if (lastToken === "|") cells.pop();
+  return cells.map((cell) => cell.trim());
+}
+
+function renderMarkdownTable(lines, start) {
+  const header = markdownTableCells(lines[start]);
+  if (!header?.length) return null;
+  const separator = markdownTableCells(lines[start + 1]);
+  if (separator?.length !== header.length || !separator.every((cell) => /^:?-+:?$/.test(cell))) {
+    return null;
+  }
+
+  const alignment = separator.map((cell) => {
+    if (!cell.endsWith(":")) return "";
+    return cell.startsWith(":") ? ' class="align-center"' : ' class="align-right"';
+  });
+  const headings = header.map((cell, index) =>
+    `<th scope="col"${alignment[index]}>${inlineMarkdown(cell)}</th>`).join("");
+  const rows = [];
+  let nextLine = start + 2;
+  for (; nextLine < lines.length; nextLine++) {
+    const cells = markdownTableCells(lines[nextLine]);
+    if (!cells?.length) break;
+    const columns = header.map((_, index) =>
+      `<td${alignment[index]}>${inlineMarkdown(cells[index] || "")}</td>`).join("");
+    rows.push(`<tr>${columns}</tr>`);
+  }
+  return {
+    html: `<div class="markdown-table-scroll"><table><thead><tr>${headings}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`,
+    nextLine,
+  };
 }
 
 /**
@@ -37,7 +85,17 @@ function renderTextBlock(block) {
     paragraph = [];
   };
 
-  for (const line of block.split("\n")) {
+  const lines = block.split("\n");
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    const table = renderMarkdownTable(lines, index);
+    if (table) {
+      flushList();
+      flushParagraph();
+      out.push(table.html);
+      index = table.nextLine - 1;
+      continue;
+    }
     const heading = /^(#{1,6})\s+(.+)$/.exec(line);
     if (heading) {
       flushList();
@@ -63,7 +121,7 @@ function renderTextBlock(block) {
 }
 
 function formatMarkdown(text) {
-  const parts = String(text).split(/```/);
+  const parts = String(text).replace(/\r\n?/g, "\n").split(/```/);
   return parts
     .map((part, index) => {
       if (index % 2 === 1) {

@@ -90,6 +90,26 @@
 .msg.assistant p:first-child { margin-top: 0; }
 .msg.assistant p:last-child { margin-bottom: 0; }
 
+.markdown-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 12px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.markdown-table-scroll table { width: 100%; border-collapse: collapse; }
+.markdown-table-scroll th, .markdown-table-scroll td {
+  min-width: 4rem;
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.markdown-table-scroll th { background: var(--bg-sunken); }
+.markdown-table-scroll :is(th, td) + :is(th, td) { border-left: 1px solid var(--border); }
+.markdown-table-scroll tbody td { border-top: 1px solid var(--border); }
+.markdown-table-scroll .align-center { text-align: center; }
+.markdown-table-scroll .align-right { text-align: right; }
+
 /* -- Message footer ------------------------------------------------------- */
 
 /* The message footer is always visible and quiet: time and token count at a
