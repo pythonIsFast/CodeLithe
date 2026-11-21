@@ -51,12 +51,11 @@ def _content(content: Any) -> Any:
 
 def responses_to_chat(
     body: dict[str, Any], *, model: str = POLLINATIONS_MODEL, include_images: bool = False,
-    merge_assistant_calls: bool = False,
+    merge_assistant_calls: bool = False, single_system_message: bool = False,
 ) -> dict[str, Any]:
     messages: list[dict[str, Any]] = []
     instructions = body.get("instructions")
-    if isinstance(instructions, str) and instructions:
-        messages.append({"role": "system", "content": instructions})
+    system_parts = [instructions] if isinstance(instructions, str) and instructions else []
 
     pending_calls: list[dict[str, Any]] = []
 
@@ -106,9 +105,15 @@ def responses_to_chat(
             continue
         role = item.get("role")
         if role in ("user", "assistant", "system", "developer"):
-            flush_calls()
             content = item.get("content")
             converted = _content(content)
+            if single_system_message and role in ("system", "developer"):
+                # Strict Chat Completions templates accept a single system turn.
+                # Compacted history arrives as a developer message.
+                if converted:
+                    system_parts.append(converted)
+                continue
+            flush_calls()
             if include_images and role == "user" and isinstance(content, list):
                 images = [
                     {"type": "image_url", "image_url": {"url": part["image_url"]}}
@@ -119,6 +124,8 @@ def responses_to_chat(
                     converted = ([{"type": "text", "text": converted}] if converted else []) + images
             messages.append({"role": role, "content": converted})
     flush_calls()
+    if system_parts:
+        messages.insert(0, {"role": "system", "content": "\n\n".join(system_parts)})
 
     tools = []
     for tool in body.get("tools") or []:

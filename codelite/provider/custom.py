@@ -401,6 +401,7 @@ class CustomProviders:
             return _send_responses(provider, request_body, upstream_model, stream)
         request = responses_to_chat(
             request_body, model=upstream_model, include_images=True, merge_assistant_calls=True,
+            single_system_message=True,
         )
         request["stream"] = stream
         if stream:

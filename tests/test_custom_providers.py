@@ -302,3 +302,35 @@ def test_full_responses_endpoint_uses_native_stream(tmp_path, monkeypatch):
         "model": model, "input": [{"id": "foreign-id", "role": "user", "content": "Hi"}],
     }, stream=True)
     assert collect_completed_response_from_sse(stream) == terminal["response"]
+
+
+def test_custom_chat_sends_compaction_summary_in_the_only_system_message(tmp_path, monkeypatch):
+    providers = custom.CustomProviders(tmp_path / "providers.json")
+    provider = providers.save({"name": "IDE3", "base_url": "https://example.test/v1"})
+    model = f"custom/{provider['id']}/Qwen/Qwen3.8-27B"
+    summary = "Working memory from earlier conversation:\nThe stick has been prepared."
+
+    def reply(_provider, path, body):
+        assert path == "/chat/completions"
+        messages = body["messages"]
+        assert [message["role"] for message in messages] == ["system", "user", "assistant", "tool", "user"]
+        assert messages[0]["content"] == f"Agent instructions.\n\n{summary}\n\nKeep the answer brief."
+        assert messages[2]["tool_calls"][0]["id"] == messages[3]["tool_call_id"] == "call-1"
+        assert messages[4]["content"] == "Does the stick boot?"
+        return provider_response({"choices": [{"message": {"content": "Check the boot menu."}}]})
+
+    monkeypatch.setattr(custom.CustomProvider, "request", reply)
+    result = collect_completed_response_from_sse(providers.send({
+        "model": model,
+        "instructions": "Agent instructions.",
+        "input": [
+            {"role": "developer", "content": [{"type": "input_text", "text": summary}]},
+            {"role": "user", "content": "Check the stick."},
+            {"role": "assistant", "content": "Checking."},
+            {"type": "function_call", "name": "list_dir", "call_id": "call-1", "arguments": "{}"},
+            {"type": "function_call_output", "call_id": "call-1", "output": "Contents"},
+            {"role": "system", "content": "Keep the answer brief."},
+            {"role": "user", "content": "Does the stick boot?"},
+        ],
+    }, stream=True))
+    assert result["output_text"] == "Check the boot menu."
