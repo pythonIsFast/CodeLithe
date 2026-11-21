@@ -21,11 +21,13 @@ and correct or silently absent, and a live run cannot tell the difference.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 from codelite.agent import loop as agent_loop
 from codelite.agent.loop import AgentRunner
+from codelite.app.runtime import Runtime
 from codelite.config import AppConfig
 from codelite.db.store import Store
 from codelite.permission.manager import PermissionManager
@@ -50,6 +52,44 @@ class FakeSession:
 
     def context_window(self, model: str) -> int:
         return 272_000
+
+
+def test_auto_safety_review_receives_last_ten_chat_messages(tmp_path: Path, monkeypatch) -> None:
+    runtime = Runtime(AppConfig(data_dir=tmp_path))
+    chat = runtime.create_conversation(str(tmp_path), mode=Mode.AUTO)
+    other_chat = runtime.create_conversation(str(tmp_path))
+    runtime.store.append_items(other_chat.id, [{"role": "user", "content": "Different conversation"}])
+    messages = [
+        {"role": "user" if index % 2 == 0 else "assistant", "text": f"Message {index}"}
+        for index in range(12)
+    ]
+    items = [{"role": message["role"], "content": message["text"]} for message in messages[:-1]]
+    items.extend([
+        {"type": "function_call_output", "output": "Tool-only text"},
+        {"type": "reasoning", "summary": [{"text": "Private reasoning"}]},
+        {"type": "message", "role": "assistant", "content": [
+            {"type": "output_text", "text": messages[-1]["text"]},
+            {"type": "output_image", "image_url": "Image payload"},
+        ]},
+    ])
+    runtime.store.append_items(chat.id, items)
+
+    def review(body, *, stream):
+        assert stream is False
+        prompt = body["input"][0]["content"][0]["text"]
+        task, transcript = prompt.split("\n\nRecent chat messages (oldest first):\n")
+        context, command = transcript.split("\n\nShell command the agent wants to run:\n")
+        assert task == "Task the user asked for:\nRun the tests"
+        assert json.loads(context) == messages[-10:]
+        assert command == "pytest -q"
+        return {"output": [{"type": "message", "role": "assistant", "content": [
+            {"type": "output_text", "text": '{"allow":true,"reason":"Runs the tests."}'},
+        ]}]}
+
+    monkeypatch.setattr(runtime.session, "send_responses", review)
+    assert runtime._state_for(chat).permissions._run_judge("pytest -q", "Run the tests") == (
+        True, "Runs the tests.",
+    )
 
 
 def _runner(

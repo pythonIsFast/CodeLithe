@@ -423,6 +423,18 @@ class Store:
         """Just the payloads -- what the model gets sent as ``input``."""
         return [entry["payload"] for entry in self.load_entries(conversation_id)]
 
+    def load_recent_messages(self, conversation_id: str, limit: int) -> list[dict[str, Any]]:
+        """Read the latest user and assistant messages in conversation order."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT payload FROM items WHERE conversation_id = ? "
+                "AND json_extract(payload, '$.role') IN ('user', 'assistant') "
+                "AND coalesce(json_extract(payload, '$.type'), 'message') = 'message' "
+                "ORDER BY id DESC LIMIT ?",
+                (conversation_id, limit),
+            ).fetchall()
+        return [json.loads(row["payload"]) for row in reversed(rows)]
+
     def has_items_before(self, conversation_id: str, item_id: int) -> bool:
         """Whether ``item_id`` has older siblings -- the pagination cursor."""
         if item_id is None:

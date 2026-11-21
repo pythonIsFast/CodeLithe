@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any, Iterator
 from uuid import uuid4
 
-from ..agent.judge import judge_shell_command
+from ..agent.judge import REVIEW_HISTORY_MESSAGES, judge_shell_command
 from ..agent.loop import AgentRunner
 from .. import settings as behaviour
 from ..config import AppConfig, normalize_effort
@@ -206,6 +206,7 @@ class Runtime:
                         ),
                         judge=lambda command, task, cid=conversation.id: judge_shell_command(
                             self.session, self.config.judge_model, command, task, session_id=cid,
+                            recent_messages=self.store.load_recent_messages(cid, REVIEW_HISTORY_MESSAGES),
                         ),
                     ),
                     questions=QuestionManager(
