@@ -257,7 +257,8 @@ natives OS-Webview als Fenster (kein Electron). Apache-2.0, UI-Texte Englisch.
 
 - **host.py** – Child-Prozess mit einem eingeblendeten GTK-Fenster, das
   vor dem ersten Anzeigen transparent und klickdurchlässig gemacht wird.
-  X11 ohne Compositor nutzt ein rahmenloses 1×1-Fenster.
+  Der GTK-Viewport ist 1280×720. X11 ohne Compositor begrenzt nur den
+  sichtbaren Teil des nativen Fensters auf 1×1 Pixel.
   `BrowserSession` (navigate/snapshot mit
   `data-cl-ref`-Refs, max 400 Elemente, click/fill/evaluate/screenshot/
   reset), JSON-Lines über stdin/stdout, `dispatch()` wirft nie.

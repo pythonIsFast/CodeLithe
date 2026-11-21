@@ -97,7 +97,7 @@ def resolve_path(destination: Path) -> Path:
 
 
 def capture_window_png(
-    window: WindowLike, timeout: float = DEFAULT_TIMEOUT_SECONDS
+    window: WindowLike, timeout: float = DEFAULT_TIMEOUT_SECONDS, *, full_page: bool = True,
 ) -> bytes:
     """Snapshot one window's web content and return PNG bytes.
 
@@ -143,9 +143,8 @@ def capture_window_png(
             done.set()
 
     def _start() -> bool:
-        webkit_widget.get_snapshot(
-            WebKit2.SnapshotRegion.FULL_DOCUMENT, WebKit2.SnapshotOptions.NONE, None, _finish
-        )
+        region = WebKit2.SnapshotRegion.FULL_DOCUMENT if full_page else WebKit2.SnapshotRegion.VISIBLE
+        webkit_widget.get_snapshot(region, WebKit2.SnapshotOptions.NONE, None, _finish)
         return False
 
     # WebKit2's snapshot call has to run on the GTK main-loop thread, which is

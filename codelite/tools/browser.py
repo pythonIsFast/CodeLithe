@@ -117,7 +117,10 @@ def _run_browser(args: dict[str, Any], ctx: ToolContext) -> str:
             return json.dumps(result, ensure_ascii=False) if result is not None else "null"
 
         if action == "screenshot":
-            result = client.call("screenshot")
+            full_page = args.get("full_page", False)
+            if not isinstance(full_page, bool):
+                raise ToolError("`full_page` must be true or false.")
+            result = client.call("screenshot", full_page=full_page)
             path = _save_screenshot(ctx, result["png_base64"])
             return f"Saved screenshot to {path}."
 
@@ -139,9 +142,9 @@ BROWSER = Tool(
         "Actions: `navigate` (url, or \"back\"/\"forward\"), `snapshot` (a compact "
         "list of interactive elements, each with a stable `ref_N` to use with "
         "click/fill), `click` (ref), `fill` (ref, value), `evaluate` (script; "
-        "runs arbitrary JavaScript and returns its value), `screenshot` (saves a "
-        "PNG into the workspace and returns its path), `reset` (start over from "
-        "a blank page).\n\n"
+        "runs arbitrary JavaScript and returns its value), `screenshot` (saves the "
+        "current viewport as a workspace PNG; use full_page for the whole document), "
+        "`reset` (start over from a blank page).\n\n"
         "Call `snapshot` after `navigate` and again after anything that changes "
         "the page -- references are only valid for the elements currently on it."
     ),
@@ -158,6 +161,10 @@ BROWSER = Tool(
             },
             "value": {"type": "string", "description": "For fill: the text to enter."},
             "script": {"type": "string", "description": "For evaluate: JavaScript to run."},
+            "full_page": {
+                "type": "boolean",
+                "description": "For screenshot: capture the whole document instead of the current viewport.",
+            },
             "max_chars": {
                 "type": "integer",
                 "description": f"For snapshot: output budget (default {DEFAULT_MAX_CHARS}).",

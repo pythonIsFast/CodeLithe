@@ -36,6 +36,8 @@ from ..screenshot import capture_window_png
 
 logger = logging.getLogger(__name__)
 
+BROWSER_VIEWPORT = (1280, 720)
+
 
 class BrowserActionError(Exception):
     """One command failed. Caught by :func:`dispatch` and reported, not raised."""
@@ -107,7 +109,7 @@ def _parse_js_result(raw: Any) -> dict[str, Any]:
     return {"ok": False, "error": f"Unexpected script result: {raw!r}"}
 
 
-def _unsupported_screenshot(_window: WindowLike) -> bytes:
+def _unsupported_screenshot(_window: WindowLike, *, full_page: bool) -> bytes:
     raise BrowserActionError(
         "Screenshots are not available on this platform's webview backend yet."
     )
@@ -120,7 +122,7 @@ class BrowserSession:
     def __init__(
         self,
         window: WindowLike,
-        screenshot_fn: Callable[[WindowLike], bytes] | None = None,
+        screenshot_fn: Callable[..., bytes] | None = None,
     ) -> None:
         self.window = window
         self._screenshot_fn = screenshot_fn or _unsupported_screenshot
@@ -220,8 +222,8 @@ class BrowserSession:
     def evaluate(self, script: str) -> Any:
         return self.window.evaluate_js(script)
 
-    def screenshot(self) -> dict[str, str]:
-        png_bytes = self._screenshot_fn(self.window)
+    def screenshot(self, *, full_page: bool = False) -> dict[str, str]:
+        png_bytes = self._screenshot_fn(self.window, full_page=full_page)
         return {"png_base64": base64.b64encode(png_bytes).decode("ascii")}
 
     def reset(self) -> dict[str, bool]:
@@ -238,7 +240,7 @@ _ACTIONS: dict[str, Callable[[BrowserSession, dict[str, Any]], Any]] = {
         {"filled": c.get("ref", "")},
     )[1],
     "evaluate": lambda s, c: s.evaluate(str(c.get("script", ""))),
-    "screenshot": lambda s, c: s.screenshot(),
+    "screenshot": lambda s, c: s.screenshot(full_page=c.get("full_page") is True),
     "reset": lambda s, c: s.reset(),
     "shutdown": lambda s, c: {"stopped": True},
 }
@@ -285,7 +287,7 @@ def serve(session: BrowserSession, stdin: Any = None, stdout: Any = None) -> Non
             return
 
 
-def _screenshot_backend() -> Callable[[WindowLike], bytes] | None:
+def _screenshot_backend() -> Callable[..., bytes] | None:
     """The platform screenshot call, or None where there is none.
 
     The WebKitGTK implementation lives in :mod:`codelite.screenshot` because
@@ -310,13 +312,10 @@ def _prepare_gtk_browser() -> None:
         window.set_focus_on_map(False)
         window.set_skip_taskbar_hint(True)
         window.set_skip_pager_hint(True)
+        window.resize(*BROWSER_VIEWPORT)
         composited = window.is_composited()
         x11 = window.get_display().__gtype__.name == "GdkX11Display"
-        if not composited:
-            # X11 without a compositor ignores top-level opacity.
-            window.set_size_request(1, 1)
-            window.resize(1, 1)
-        elif not x11:
+        if not x11:
             visual = window.get_screen().get_rgba_visual()
             if visual is not None:
                 window.set_visual(visual)
@@ -325,9 +324,19 @@ def _prepare_gtk_browser() -> None:
         # The invisible window must not intercept clicks on the main app.
         window.realize()
         surface = window.get_window()
-        if composited and x11:
-            # Set opacity on the X11 surface, including the WebKit layers.
-            surface.set_opacity(0.0)
+        if x11:
+            if composited:
+                # Set opacity on the X11 surface, including the WebKit layers.
+                surface.set_opacity(0.0)
+            else:
+                # Clip the native window instead of shrinking the WebKit viewport.
+                try:
+                    import cairo
+                except ImportError:
+                    window.set_size_request(1, 1)
+                    window.resize(1, 1)
+                else:
+                    surface.shape_combine_region(cairo.Region(cairo.RectangleInt(0, 0, 1, 1)), 0, 0)
         surface.set_pass_through(True)
         show(view)
 

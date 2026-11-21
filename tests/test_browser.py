@@ -147,11 +147,17 @@ def test_fill_accepts_a_string_encoded_js_result() -> None:
 
 
 def test_screenshot_uses_the_injected_backend_and_base64_encodes() -> None:
-    session = BrowserSession(FakeWindow(), screenshot_fn=lambda _w: b"\x89PNG-fake")
+    def capture(_window, *, full_page):
+        return b"\x89PNG-full" if full_page else b"\x89PNG-viewport"
+
+    session = BrowserSession(FakeWindow(), screenshot_fn=capture)
     result = session.screenshot()
     import base64
 
-    assert base64.b64decode(result["png_base64"]) == b"\x89PNG-fake"
+    assert base64.b64decode(result["png_base64"]) == b"\x89PNG-viewport"
+    assert base64.b64decode(dispatch(session, {
+        "action": "screenshot", "full_page": True,
+    })["result"]["png_base64"]) == b"\x89PNG-full"
 
 
 def test_screenshot_without_a_backend_reports_clearly() -> None:
