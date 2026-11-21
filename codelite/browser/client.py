@@ -40,6 +40,8 @@ from .. import settings
 #: Falls back to this only if the setting cannot be read (e.g. during a
 #: schema migration); the live value normally comes from settings.active().
 DEFAULT_TIMEOUT_SECONDS = 30.0
+DOM_ACTION_TIMEOUT_SECONDS = 2.0
+DOM_ACTIONS = frozenset({"evaluate", "snapshot", "click", "fill"})
 
 
 class BrowserError(RuntimeError):
@@ -180,6 +182,8 @@ class BrowserClient:
         next -- there is no request id multiplexing on the wire.
         """
         timeout = self._timeout()
+        if action in DOM_ACTIONS:
+            timeout = min(timeout, DOM_ACTION_TIMEOUT_SECONDS)
         deadline = time.monotonic() + timeout
         if not self._lock.acquire(timeout=timeout):
             raise BrowserError("The browser is busy with another action. Try again.")

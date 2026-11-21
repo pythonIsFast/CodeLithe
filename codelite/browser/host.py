@@ -28,6 +28,7 @@ import base64
 import json
 import logging
 import sys
+import threading
 import time
 from typing import Any, Callable, Protocol
 
@@ -296,6 +297,42 @@ def _screenshot_backend() -> Callable[..., bytes] | None:
     return capture_window_png if screenshots_available() else None
 
 
+def _evaluate_gtk_js(view: Any, script: str) -> Any:
+    """Complete the GTK bridge even when WebKit rejects the evaluation."""
+    from gi.repository import GLib
+
+    done = threading.Event()
+    value: str | None = None
+    error: Exception | None = None
+
+    def finish(widget: Any, task: Any, _data: Any = None) -> None:
+        nonlocal value, error
+        try:
+            result = widget.evaluate_javascript_finish(task)
+            value = result.to_string() if result is not None else None
+        except Exception as failure:  # noqa: BLE001 - the caller must be woken up
+            error = failure
+        finally:
+            done.set()
+
+    def start() -> bool:
+        nonlocal error
+        try:
+            view.webview.evaluate_javascript(script, -1, None, None, None, finish)
+        except Exception as failure:  # noqa: BLE001 - the caller must be woken up
+            error = failure
+            done.set()
+        return False
+
+    GLib.idle_add(start)
+    done.wait()  # The parent enforces the per-action deadline if WebKit stalls.
+    if error is not None:
+        raise BrowserActionError(f"WebKit could not evaluate JavaScript: {error}") from None
+    if value is None or value in ("undefined", "null"):
+        return None
+    return json.loads(value) if value else ""
+
+
 def _prepare_gtk_browser() -> None:
     """Configure the child process's GTK window before pywebview maps it."""
     try:
@@ -304,6 +341,12 @@ def _prepare_gtk_browser() -> None:
         return  # pywebview can choose a different backend.
 
     show = BrowserView.show
+    evaluate = BrowserView.evaluate_js
+
+    def evaluate_with_completion(view: Any, script: str) -> Any:
+        if not hasattr(view.webview, "evaluate_javascript"):
+            return evaluate(view, script)
+        return _evaluate_gtk_js(view, script)
 
     def show_in_background(view: Any) -> None:
         window = view.window
@@ -340,9 +383,9 @@ def _prepare_gtk_browser() -> None:
         surface.set_pass_through(True)
         show(view)
 
-    # pywebview 5 has no pre-show hook. This class belongs to the dedicated
-    # browser process, so the main app's window never uses this wrapper.
+    # The window and bridge workarounds only apply in this child process.
     BrowserView.show = show_in_background
+    BrowserView.evaluate_js = evaluate_with_completion
 
 
 def main() -> None:  # pragma: no cover - exercised manually, needs a real display

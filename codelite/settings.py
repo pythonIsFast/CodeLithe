@@ -226,8 +226,8 @@ SETTINGS: tuple[Setting, ...] = (
         kind="float",
         default=30.0,
         group="integrations",
-        help="How long to wait for a browser action. A blocked browser session "
-        "is reset after this timeout.",
+        help="Maximum wait for page loads and screenshots. Interacting with the "
+        "page or running JavaScript has a separate two-second limit.",
         minimum=5,
         maximum=180,
         unit="s",

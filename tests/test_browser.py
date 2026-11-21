@@ -28,6 +28,7 @@ from typing import Any
 
 import pytest
 
+from codelite.browser import client as browser_client
 from codelite.browser.client import BrowserClient, BrowserError
 from codelite.browser.host import BrowserActionError, BrowserSession, dispatch
 from codelite.permission.manager import PermissionDenied, PermissionManager
@@ -213,11 +214,10 @@ for line in sys.stdin:
     try:
         first = "stop_reading" if stop_reading else "navigate"
         assert client.call(first) == first
-        monkeypatch.setattr(client, "_timeout", lambda: 0.25)
+        monkeypatch.setattr(browser_client, "DOM_ACTION_TIMEOUT_SECONDS", 0.25)
         with pytest.raises(BrowserError, match=r"evaluate.*timed out.*session was reset"):
             client.call("evaluate", script="x" * 1_000_000)
         assert client._proc is None
-        monkeypatch.setattr(client, "_timeout", lambda: 5.0)
         assert client.call("navigate") == "navigate"
     finally:
         client.close()
