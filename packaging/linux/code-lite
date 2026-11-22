@@ -13,4 +13,6 @@ if [ ! -f "$APP" ]; then
     exit 1
 fi
 
-exec python3 "$APP" "$@"
+# PyGObject is installed for Debian's interpreter, even if a virtualenv or
+# a CI toolchain puts another python3 first on PATH.
+exec /usr/bin/python3 "$APP" "$@"
