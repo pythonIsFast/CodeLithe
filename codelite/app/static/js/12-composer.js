@@ -235,6 +235,7 @@ async function sendMessage() {
         workspace: draft.workspace,
         mode: draft.mode,
         model: draft.model,
+        agent_id: draft.agentId,
         reasoning_effort: draft.effort,
         fast_mode: draft.fast,
         flex_mode: draft.flex,
@@ -247,6 +248,7 @@ async function sendMessage() {
 
     state.active = conversation;
     state.draft = null;
+    renderChatAgent();
     el.composerContext.hidden = true;
     el.titleButton.classList.remove("untitled");
     el.title.textContent = conversation.title || "New session";

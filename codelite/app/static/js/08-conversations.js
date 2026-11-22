@@ -323,6 +323,8 @@ function showConversation(data) {
   const wasDraft = Boolean(state.draft);
   state.draft = null;
   state.active = data;
+  renderChatAgent();
+  renderSubagents([]);
   el.composerContext.hidden = true;
   el.titleButton.classList.remove("untitled");
   if (wasDraft) {

@@ -22,7 +22,7 @@
           ('opencode-go', 'OpenCode Go', 'Manage inference credentials and track your Go allowance.'),
           ('custom-providers', 'Custom providers', 'Connect OpenAI-compatible APIs and choose their models.'),
           ('model-picker', 'Model picker', 'Choose which models appear in the composer.')]),
-        ('agent', 'Agent', []),
+        ('agent', 'Agent', [('agents', 'Agents', 'Manage built-in and custom agent profiles.')]),
         ('workspace', 'Workspace', [
           ('memory', 'Global memory', 'Set instructions shared across every workspace.'),
           ('project', 'Current project', 'Edit project memory and configure MCP and language servers.')]),
@@ -85,6 +85,26 @@
               </div>
               <div id="go-usage" role="status"></div>
             </div>
+          </section>
+          <section class="settings-panel" data-settings-panel="agents" hidden>
+            <div id="agent-profile-list" class="settings-block"></div>
+            <form id="agent-profile-form" class="settings-block">
+              <label class="field">Name <input id="agent-profile-name" maxlength="60" required></label>
+              <label class="field">Instructions
+                <textarea id="agent-profile-instructions" maxlength="8000" rows="4"></textarea>
+              </label>
+              <label class="field">Model <select id="agent-profile-model"></select></label>
+              <label class="field">Thinking <select id="agent-profile-effort"></select></label>
+              <details>
+                <summary>Tool access</summary>
+                <label><input type="checkbox" id="agent-profile-limit-tools"> Limit tools</label>
+                <div id="agent-profile-tools"></div>
+              </details>
+              <div class="settings-block-actions">
+                <button id="agent-profile-reset" class="btn" type="button">New profile</button>
+                <button class="btn primary" type="submit">Save agent</button>
+              </div>
+            </form>
           </section>
           <section class="settings-panel" data-settings-panel="custom-providers" hidden>
             <div id="custom-provider-list" class="settings-block"></div>

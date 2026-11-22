@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS app_state (
 #: Columns added after the first release. Applied with ALTER TABLE on open, so
 #: an existing database keeps working instead of needing to be thrown away.
 MIGRATIONS: tuple[tuple[str, str, str], ...] = (
+    ("conversations", "agent_id", "TEXT NOT NULL DEFAULT 'general'"),
     ("conversations", "context_tokens", "INTEGER NOT NULL DEFAULT 0"),
     ("conversations", "total_tokens", "INTEGER NOT NULL DEFAULT 0"),
     ("items", "meta", "TEXT NOT NULL DEFAULT '{}'"),
@@ -137,6 +138,7 @@ class Conversation:
     #: The external session this was imported from, empty when started here.
     #: `from_row` splats every column, so a new column has to land here too.
     source_id: str = ""
+    agent_id: str = "general"
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "Conversation":
@@ -148,6 +150,7 @@ class Conversation:
             "title": self.title,
             "workspace": self.workspace,
             "model": self.model,
+            "agent_id": self.agent_id,
             "permission_mode": self.permission_mode,
             "reasoning_effort": self.reasoning_effort,
             "fast_mode": bool(self.fast_mode),
@@ -204,6 +207,7 @@ class Store:
         reasoning_effort: str = "",
         fast_mode: int = 0,
         flex_mode: int = 0,
+        agent_id: str = "general",
     ) -> Conversation:
         conversation = Conversation(
             id=uuid.uuid4().hex,
@@ -216,12 +220,13 @@ class Store:
             reasoning_effort=reasoning_effort,
             fast_mode=fast_mode,
             flex_mode=flex_mode,
+            agent_id=agent_id,
         )
         with self._connect() as conn:
             conn.execute(
                 "INSERT INTO conversations (id, title, workspace, model, "
                 "permission_mode, created_at, updated_at, reasoning_effort, "
-                "fast_mode, flex_mode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "fast_mode, flex_mode, agent_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     conversation.id,
                     conversation.title,
@@ -233,6 +238,7 @@ class Store:
                     conversation.reasoning_effort,
                     conversation.fast_mode,
                     conversation.flex_mode,
+                    conversation.agent_id,
                 ),
             )
         return conversation
@@ -244,6 +250,12 @@ class Store:
                 "SELECT source_id FROM conversations WHERE source_id != ''"
             ).fetchall()
         return {row["source_id"] for row in rows}
+
+    def uses_agent(self, agent_id: str) -> bool:
+        with self._connect() as conn:
+            return conn.execute(
+                "SELECT 1 FROM conversations WHERE agent_id = ? LIMIT 1", (agent_id,),
+            ).fetchone() is not None
 
     def import_conversation(
         self,

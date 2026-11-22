@@ -32,7 +32,8 @@ function wireEvents() {
   el.topbarSettings.addEventListener("click", () => openSettings());
   // The behaviour panels render from the schema inside openSettings, so the
   // first of them is addressable by the time the tab is selected.
-  el.sideCustomize.addEventListener("click", () => openSettings("group:provider"));
+  el.sideCustomize.addEventListener("click", () => openSettings("agents"));
+  wireAgentProfiles();
   el.sideSearch.addEventListener("click", () => {
     const show = el.sideSearchField.hidden;
     el.sideSearchField.hidden = !show;

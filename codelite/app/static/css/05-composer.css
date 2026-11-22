@@ -401,3 +401,39 @@
 .composer button#send:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .composer button#send:disabled { opacity: .45; cursor: default; }
 .composer button#send:disabled:hover { background: none; color: var(--text-faint); }
+
+.chat-agent-picker {
+  max-width: 108px;
+  padding: 3px 4px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font: inherit;
+}
+.chat-agent-picker:disabled { color: var(--text-dim); opacity: 1; }
+.subagents-panel {
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  font-size: 12px;
+}
+.subagents-panel[hidden] { display: none; }
+.subagent-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  overflow-wrap: anywhere;
+}
+.subagent-row[data-status="running"] { color: var(--accent-strong); }
+#subagent-messages {
+  max-height: 90px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-dim);
+}

@@ -32,6 +32,8 @@ from uuid import uuid4
 
 from ..agent.judge import REVIEW_HISTORY_MESSAGES, judge_shell_command
 from ..agent.loop import AgentRunner
+from ..agent.profiles import AgentProfile, AgentProfiles
+from ..agent.subagents import Subagents
 from .. import settings as behaviour
 from ..config import AppConfig, normalize_effort
 from ..db.store import Conversation, Store
@@ -79,6 +81,7 @@ class ConversationRuntime:
     questions: QuestionManager
     subscribers: list[queue.Queue] = field(default_factory=list)
     runner: AgentRunner | None = None
+    subagents: Subagents | None = None
     thread: threading.Thread | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -94,6 +97,7 @@ class Runtime:
     def __init__(self, config: AppConfig | None = None) -> None:
         self.config = config or AppConfig()
         self.store = Store(self.config.db_path)
+        self.agent_profiles = AgentProfiles(self.store)
         self.desktop = DesktopControl()
         self.session = Session(
             ProviderConfig(auth_file_path=self.config.data_dir / "auth.json")
@@ -153,22 +157,27 @@ class Runtime:
         reasoning_effort: str | None = None,
         fast_mode: bool = False,
         flex_mode: bool = False,
+        agent_id: str = "general",
     ) -> Conversation:
         resolved_workspace = Path(workspace).expanduser().resolve() if workspace else Path.cwd()
         if not resolved_workspace.is_dir():
             raise ValueError(f"{resolved_workspace} is not a directory.")
-        chosen_model = model or (
+        profile = self.agent_profiles.get(agent_id)
+        if profile is None:
+            raise ValueError("Choose an available agent profile.")
+        chosen_model = model or profile.model or (
             POLLINATIONS_MODEL if self.config.use_pollinations_free else self.config.agent_model
         )
         return self.store.create_conversation(
             workspace=str(resolved_workspace),
             model=chosen_model,
+            agent_id=profile.id,
             permission_mode=(mode or self.config.default_permission_mode).value,
             reasoning_effort=self.normalize_model_effort(
                 chosen_model,
                 reasoning_effort
                 if reasoning_effort is not None
-                else self.config.default_reasoning_effort
+                else profile.effort or self.config.default_reasoning_effort
             ),
             # Mutually exclusive -- the UI enforces this, but a request that
             # somehow sends both must not pick one arbitrarily on the server.
@@ -330,6 +339,8 @@ class Runtime:
             state.subscribers.append(stream)
         try:
             yield _format_sse("ready", {"busy": state.busy})
+            if state.subagents is not None:
+                yield _format_sse("subagents", {"agents": state.subagents.snapshot()})
             # Re-announce anything already waiting, so a reload does not lose
             # a permission prompt the agent is still blocked on.
             for pending in state.permissions.list_pending():
@@ -362,22 +373,36 @@ class Runtime:
             if state.busy:
                 raise RunInProgress("A run is already in progress in this conversation.")
 
+            profile = self.agent_profiles.get(conversation.agent_id) or AgentProfile(
+                conversation.agent_id, "Unavailable agent", tools=(),
+            )
+            allowed = frozenset(profile.tools) if profile.tools is not None else None
+            publish = lambda event, data: self.publish(conversation.id, event, data)
+            subagents = Subagents(self, conversation, profile, publish) if (
+                allowed is None or "subagents" in allowed
+            ) else None
+            state.subagents = subagents
+            publish("subagents", {"agents": []})
             runner = AgentRunner(
                 session=self.session,
                 store=self.store,
                 conversation=conversation,
                 permissions=state.permissions,
                 questions=state.questions,
-                publish=lambda event, data, cid=conversation.id: self.publish(
-                    cid, event, data
-                ),
+                publish=publish,
                 config=self.config,
                 computer_use=self.desktop.for_run(conversation.id) if allow_desktop else None,
+                agent_instructions=profile.instructions,
+                allowed_tools=allowed,
+                coordination_tool="subagents" if subagents else "",
+                agent_control=subagents.handle if subagents else None,
+                agent_inbox=subagents.inbox if subagents else None,
+                agent_wait=subagents.wait_for_updates if subagents else None,
             )
             state.runner = runner
             thread = threading.Thread(
                 target=self._run_and_report,
-                args=(runner, user_text, attachments, message_id, conversation.id),
+                args=(runner, user_text, attachments, message_id, conversation.id, subagents),
                 name=f"codelite-run-{conversation.id[:8]}",
                 daemon=True,
             )
@@ -457,6 +482,7 @@ class Runtime:
         attachments: list[dict[str, str]] | None,
         message_id: str | None,
         cid: str,
+        subagents: Subagents | None = None,
     ) -> None:
         """Run a turn, then publish the plan usage the request just revealed."""
         try:
@@ -465,6 +491,8 @@ class Runtime:
             logger.exception("Agent run failed before its streaming loop started")
             self.publish(cid, "error", {"message": str(error)})
         finally:
+            if subagents is not None:
+                subagents.close()
             self._update_activity(cid, "cancelled" if runner.cancelled else "finished")
             self.refresh_plan_usage(publish_to=cid)
             self.publish(cid, "run_finished", {})
@@ -514,7 +542,13 @@ class Runtime:
         if state is None or state.runner is None or not state.busy:
             return False
         state.runner.cancel()
+        if state.subagents:
+            state.subagents.close()
         return True
+
+    def stop_subagent(self, conversation: Conversation, subagent_id: str) -> bool:
+        subagents = self._state_for(conversation).subagents
+        return bool(subagents and subagents.stop(subagent_id))
 
     def is_busy(self, conversation: Conversation) -> bool:
         return self._state_for(conversation).busy

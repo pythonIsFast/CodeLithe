@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .agents import AGENT_MESSAGE, SUBAGENTS
 from .base import Tool
 from .browser import BROWSER
 from .code_intelligence import CODE_INTELLIGENCE
@@ -41,6 +42,8 @@ from .web import WEB_FETCH, WEB_SEARCH
 
 TOOLS: tuple[Tool, ...] = (
     BROWSER,
+    SUBAGENTS,
+    AGENT_MESSAGE,
     COMPUTER_USE,
     READ_FILE,
     WRITE_FILE,
@@ -83,10 +86,13 @@ def names() -> list[str]:
 
 def to_responses_tools(
     *, asynchronous: bool = False, computer_use: bool = False,
+    allowed: frozenset[str] | None = None, coordination_tool: str = "",
 ) -> list[dict[str, Any]]:
     """Render every tool as a Responses-API tool definition."""
     return [
         tool.to_responses_tool(asynchronous=asynchronous and tool.name in ASYNC_SAFE_TOOL_NAMES)
         for tool in TOOLS
-        if tool is not COMPUTER_USE or computer_use
+        if (tool is not COMPUTER_USE or computer_use)
+        and (tool not in (SUBAGENTS, AGENT_MESSAGE) or tool.name == coordination_tool)
+        and (allowed is None or tool.name in allowed)
     ]

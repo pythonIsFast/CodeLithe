@@ -406,3 +406,18 @@
 }
 .btn.danger:hover { filter: brightness(.92); }
 .confirm-text { margin: 0; color: var(--text-dim); font-size: 13px; }
+
+#agent-profile-tools {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 6px;
+  margin: 8px 0;
+}
+#agent-profile-tools[hidden] { display: none; }
+#agent-profile-form select {
+  margin-left: 6px;
+  background: var(--bg-sunken);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}

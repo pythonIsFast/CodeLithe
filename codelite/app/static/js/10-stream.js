@@ -89,6 +89,8 @@ function connectStream(conversationId) {
     else setBusy(false);
   });
   on("computer_use", refreshComputerUse);
+  on("subagents", (data) => renderSubagents(data.agents || []));
+  on("agent_message", renderSubagentMessage);
   on("user_message", (data) => {
     const messageId = String(data.message_id || "");
     const existing = messageId

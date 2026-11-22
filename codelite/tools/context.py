@@ -67,6 +67,8 @@ class ToolContext:
     #: Ask this run to switch or report its reasoning effort.
     thinking_control: Callable[[str], str] | None = None
     computer_use: Callable[[dict[str, Any]], tuple[str, str | None]] | None = None
+    agent_control: Callable[[dict[str, Any], str], Any] | None = None
+    workspace_only: bool = False
 
     def __post_init__(self) -> None:
         if self.cwd is None:
@@ -152,7 +154,7 @@ class ToolContext:
             candidate = Path(raw_path).expanduser().resolve()
             if candidate in self.attachment_paths:
                 return candidate
-            if settings.active("allow_read_outside_workspace"):
+            if not self.workspace_only and settings.active("allow_read_outside_workspace"):
                 return candidate
             raise
 

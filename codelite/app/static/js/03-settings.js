@@ -264,6 +264,7 @@ function selectSettingsTab(name, { clearSearch = true } = {}) {
     loadCustomProviders().catch((error) => toast(error.message, true));
   }
   if (state.settingsTab === "model-picker") renderModelVisibility();
+  if (state.settingsTab === "agents") loadAgentProfiles().catch((error) => toast(error.message, true));
 }
 
 function renderSettingsSearch() {

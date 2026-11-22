@@ -75,8 +75,10 @@ function startNewSession(workspace = null) {
   const previousWorkspace = state.active?.workspace || state.draft?.workspace;
   disconnectStream();
   state.active = null;
+  renderSubagents([]);
   const selected = el.modelSelect.value || state.meta?.default_model;
   state.draft = {
+    agentId: "general",
     workspace: workspace || previousWorkspace || state.meta?.cwd || "",
     mode: el.modeSelect.value || state.meta?.default_mode || "ask",
     model: state.models.includes(selected) ? selected : (state.models[0] || ""),
@@ -127,6 +129,7 @@ function scheduleSessionLayout() {
 function updateDraftControls() {
   const draft = state.draft;
   if (!draft) return;
+  renderChatAgent();
   el.modeSelect.value = draft.mode;
   renderCustomSelect(el.modeSelect);
   syncModeChip();

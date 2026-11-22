@@ -115,6 +115,12 @@ py -3 -m venv .venv
 - **Use code intelligence and extensions.** Connect language servers, MCP servers, project skills, and local Python tools. Search the web or open JavaScript-rendered pages in a separate system webview.
 - **Bring existing work along.** Import readable Codex CLI history from **Settings → Application → Import conversations**. Optional **Remote Control** opens the UI through a password-protected tunnel while the agent keeps running on your computer.
 
+### Agent profiles and subagents
+
+Open **Customize → Agents** to manage profiles. **General**, **Explorer**, and **Reviewer** are built in. Duplicate a built-in profile or create your own, then select it when starting a chat. Profiles can set instructions, a model, a thinking level, and tool access.
+
+The main agent can delegate up to three read-only subagents at once, check their model, status, and tool-call count, and exchange messages with them. Each worker receives the delegated task and messages addressed to it. The chat shows live status and a stop button for each active worker.
+
 ### Permissions
 
 | Mode | File edits | Shell commands |

@@ -544,6 +544,7 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
                 reasoning_effort=body.get("reasoning_effort"),
                 fast_mode=bool(body.get("fast_mode")),
                 flex_mode=bool(body.get("flex_mode")),
+                agent_id=body.get("agent_id", "general"),
             )
         except ValueError as error:
             return jsonify({"error": str(error)}), 400
@@ -551,6 +552,31 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
             **conversation.as_dict(),
             "context_window": conversation_context_window(conversation.model),
         }), 201
+
+    @app.get("/api/agents")
+    def list_agents():
+        return jsonify({"agents": [profile.public() for profile in rt().agent_profiles.list()]})
+
+    @app.post("/api/agents")
+    @app.route("/api/agents/<agent_id>", methods=["PUT", "DELETE"])
+    def save_agent(agent_id=None):
+        try:
+            if request.method == "DELETE":
+                rt().agent_profiles.delete(agent_id)
+                return jsonify({"deleted": True})
+            profile = rt().agent_profiles.save(_body(), agent_id)
+            return jsonify(profile.public()), 201 if agent_id is None else 200
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+
+    @app.post("/api/conversations/<conversation_id>/subagents/<subagent_id>/stop")
+    def stop_subagent(conversation_id: str, subagent_id: str):
+        conversation, error = _conversation_or_404(conversation_id)
+        if error:
+            return error
+        if not rt().stop_subagent(conversation, subagent_id):
+            return jsonify({"error": "This subagent is no longer active."}), 409
+        return jsonify({"stopped": True})
 
     def conversation_context_window(model: str) -> int:
         return rt().model_context_windows.get(model) or context_window_for(model)
