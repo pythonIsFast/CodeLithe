@@ -447,6 +447,8 @@ def run(
         )
         show_startup_error(f"The CodeLithe window could not start: {error}{hint}")
         return 1
+    finally:
+        runtime.desktop.shutdown()
 
     if screenshot is not None:
         error = outcome.get("error")

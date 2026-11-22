@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import base64
 import ctypes
+import math
 import os
 import re
 import sys
 import threading
 from concurrent.futures import Future
 from dataclasses import dataclass
+from time import monotonic
 from typing import Any, Callable
 
 from ..tools.base import ToolError
+from .desktop_pointer import GreenPointer, X11Pointer, x11_function
 
 
 def _on_gtk(callback: Callable[[], Any]) -> Any:
@@ -90,7 +93,7 @@ class DesktopControl:
                 chat = DesktopChat(conversation_id)
                 panel = DesktopPanel(Gtk, Gdk, chat, self._lock, stop, send)
                 try:
-                    desktop_input = X11Input(Gdk, panel)
+                    desktop_input = X11Input(Gdk, Gtk, panel)
                 except Exception:
                     panel.close()
                     raise
@@ -112,6 +115,15 @@ class DesktopControl:
         _on_gtk(cleanup)
         return True
 
+    def shutdown(self) -> None:
+        """Release the X11 device when the native window's main loop exits."""
+        with self._lock:
+            panel, desktop_input = self._panel, self._input
+            self._chat = self._panel = self._input = None
+        if panel is not None and desktop_input is not None:
+            desktop_input.close()
+            panel.close()
+
     def for_run(self, conversation_id: str):
         with self._lock:
             chat = self._chat
@@ -119,13 +131,20 @@ class DesktopControl:
             return None
 
         def run(args: dict[str, Any]) -> tuple[str, str | None]:
-            def execute() -> tuple[str, Any]:
+            def with_access(callback: Callable[[], Any]) -> Any:
                 with self._lock:
                     if self._chat is not chat:
                         raise ToolError("Computer Use was turned off for this run.")
-                    return self._input.perform(chat, args)
+                    return callback()
 
-            message, image = _on_gtk(execute)
+            result = _on_gtk(lambda: with_access(lambda: self._input.perform(chat, args, with_access)))
+            if isinstance(result, Future):
+                try:
+                    result = result.result(timeout=5)
+                except TimeoutError:
+                    result.cancel()
+                    raise ToolError("The agent pointer did not finish moving.") from None
+            message, image = result
             if image is None:
                 return message, None
             ok, content = image.save_to_bufferv("jpeg", ["quality"], ["85"])
@@ -295,6 +314,13 @@ class DesktopPanel:
         return left <= x < left + width and top <= y < top + height
 
 
+@dataclass(frozen=True)
+class _PointerStep:
+    point: tuple[int, int]
+    arrive: Callable[[], None] | None = None
+    pause: float = 0
+
+
 class X11Input:
     """XTest emits normal desktop events without a shell subprocess."""
 
@@ -302,10 +328,16 @@ class X11Input:
     _WHEEL = {"up": 4, "down": 5, "left": 6, "right": 7}
     _MODIFIERS = {"Ctrl": "Control_L", "Alt": "Alt_L", "Shift": "Shift_L", "Super": "Super_L"}
 
-    def __init__(self, Gdk, panel: DesktopPanel) -> None:
+    def __init__(self, Gdk, Gtk, panel: DesktopPanel) -> None:
         self._gdk = Gdk
         self._panel = panel
         self._size: tuple[int, int] | None = None
+        self._pointer: X11Pointer | None = None
+        self._marker: GreenPointer | None = None
+        self._blank_cursor = None
+        self._animation: Future[tuple[str, Any]] | None = None
+        self._animation_source = 0
+        self._dragging = False
         try:
             self._x11 = ctypes.CDLL("libX11.so.6")
             xtest = ctypes.CDLL("libXtst.so.6")
@@ -313,30 +345,43 @@ class X11Input:
             raise ToolError("Computer Use needs the X11 and XTest libraries (libx11-6 and libxtst6).") from error
 
         pointer, integer, key = ctypes.c_void_p, ctypes.c_int, ctypes.c_uint
-        self._open = self._function(self._x11, "XOpenDisplay", pointer, ctypes.c_char_p)
-        self._close = self._function(self._x11, "XCloseDisplay", integer, pointer)
-        self._flush = self._function(self._x11, "XFlush", integer, pointer)
-        self._keysym = self._function(self._x11, "XStringToKeysym", ctypes.c_ulong, ctypes.c_char_p)
-        self._keycode = self._function(self._x11, "XKeysymToKeycode", ctypes.c_ubyte, pointer, ctypes.c_ulong)
-        self._motion = self._function(xtest, "XTestFakeMotionEvent", integer, pointer, integer, integer, integer, ctypes.c_ulong)
-        self._button = self._function(xtest, "XTestFakeButtonEvent", integer, pointer, key, integer, ctypes.c_ulong)
-        self._key = self._function(xtest, "XTestFakeKeyEvent", integer, pointer, key, integer, ctypes.c_ulong)
-        query = self._function(xtest, "XTestQueryExtension", integer, pointer, *([ctypes.POINTER(integer)] * 4))
+        self._open = x11_function(self._x11, "XOpenDisplay", pointer, ctypes.c_char_p)
+        self._close = x11_function(self._x11, "XCloseDisplay", integer, pointer)
+        self._flush = x11_function(self._x11, "XFlush", integer, pointer)
+        self._keysym = x11_function(self._x11, "XStringToKeysym", ctypes.c_ulong, ctypes.c_char_p)
+        self._keycode = x11_function(self._x11, "XKeysymToKeycode", ctypes.c_ubyte, pointer, ctypes.c_ulong)
+        self._motion = x11_function(xtest, "XTestFakeMotionEvent", integer, pointer, integer, integer, integer, ctypes.c_ulong)
+        self._button = x11_function(xtest, "XTestFakeButtonEvent", integer, pointer, key, integer, ctypes.c_ulong)
+        self._key = x11_function(xtest, "XTestFakeKeyEvent", integer, pointer, key, integer, ctypes.c_ulong)
+        query = x11_function(xtest, "XTestQueryExtension", integer, pointer, *([ctypes.POINTER(integer)] * 4))
         self._display = self._open(None)
         if not self._display:
             raise ToolError("Could not connect to the X11 desktop.")
-        if not query(self._display, *(ctypes.byref(integer()) for _ in range(4))):
-            self.close()
-            raise ToolError("The X11 desktop does not provide XTest.")
+        try:
+            if not query(self._display, *(ctypes.byref(integer()) for _ in range(4))):
+                raise ToolError("The X11 desktop does not provide XTest.")
+            self._pointer = X11Pointer(self._x11, self._display)
+            self._marker = GreenPointer(Gtk, Gdk)
+            from gi.repository import GdkX11
 
-    @staticmethod
-    def _function(library, name, returns, *arguments):
-        fn = getattr(library, name)
-        fn.restype = returns
-        fn.argtypes = list(arguments)
-        return fn
+            display = Gdk.Display.get_default()
+            self._blank_cursor = Gdk.Cursor.new_for_display(display, Gdk.CursorType.BLANK_CURSOR)
+            self._pointer.set_root_cursor(GdkX11.X11Cursor.get_xcursor(self._blank_cursor))
+            self._paint_pointer(self._pointer.position())
+        except Exception:
+            self.close()
+            raise
 
     def close(self) -> None:
+        if self._animation_source:
+            from gi.repository import GLib
+
+            GLib.source_remove(self._animation_source)
+        self._finish_animation(error=ToolError("Computer Use was turned off for this run."))
+        if self._marker is not None:
+            self._marker.close()
+        if self._pointer is not None:
+            self._pointer.close()
         self._close(self._display)
 
     def _capture(self):
@@ -367,12 +412,87 @@ class X11Input:
         scale = root.get_scale_factor()
         return x * scale, y * scale
 
-    def _move(self, point: tuple[int, int], delay: int = 0) -> None:
-        self._motion(self._display, -1, *point, delay)
+    def _paint_pointer(self, point: tuple[int, int]) -> None:
+        scale = self._gdk.get_default_root_window().get_scale_factor()
+        self._marker.move(point[0] // scale, point[1] // scale)
 
-    def _click(self, button: int, delay: int = 0) -> None:
-        self._button(self._display, button, 1, delay)
+    def _click(self, button: int) -> None:
+        self._button(self._display, button, 1, 0)
         self._button(self._display, button, 0, 0)
+
+    def _drag_button(self, pressed: bool) -> None:
+        self._dragging = pressed
+        self._button(self._display, 1, int(pressed), 0)
+
+    def _finish_animation(self, message: str = "", *, error: Exception | None = None) -> None:
+        pending, self._animation = self._animation, None
+        self._animation_source = 0
+        if self._dragging:
+            self._drag_button(False)
+            self._flush(self._display)
+        if pending is not None and not pending.done():
+            if error is None:
+                pending.set_result((message, None))
+            else:
+                pending.set_exception(error)
+
+    def _animate(
+        self, steps: list[_PointerStep], message: str, with_access: Callable,
+    ) -> Future[tuple[str, Any]]:
+        from gi.repository import GLib
+
+        if self._animation is not None:
+            raise ToolError("The agent pointer is already moving.")
+        pending: Future[tuple[str, Any]] = Future()
+        route = iter(steps)
+        step = next(route)
+        start = self._pointer.position()
+        previous = start
+        self._animation = pending
+        started = monotonic()
+        duration = self._move_duration(start, step)
+
+        def frame() -> bool:
+            nonlocal step, start, started, duration, previous
+            self._pointer.check_selected()
+            fraction = min(1.0, (monotonic() - started) / duration) if duration else 1.0
+            eased = fraction * fraction * (3 - 2 * fraction)
+            point = tuple(round(origin + (target - origin) * eased) for origin, target in zip(start, step.point))
+            if point != previous:
+                self._motion(self._display, -1, *point, 0)
+                self._paint_pointer(point)
+                previous = point
+            if fraction >= 1 and step.arrive is not None:
+                step.arrive()
+            self._flush(self._display)
+            if fraction < 1:
+                return True
+            start = step.point
+            step = next(route, None)
+            if step is None:
+                self._finish_animation(message)
+                return False
+            started = monotonic()
+            duration = self._move_duration(start, step)
+            return True
+
+        def tick() -> bool:
+            try:
+                if not pending.cancelled():
+                    return with_access(frame)
+                self._finish_animation()
+            except Exception as error:
+                self._finish_animation(error=error)
+            return False
+
+        if tick():
+            self._animation_source = GLib.timeout_add(16, tick)
+        return pending
+
+    @staticmethod
+    def _move_duration(start: tuple[int, int], step: _PointerStep) -> float:
+        distance = math.dist(start, step.point)
+        return min(.52, .12 + distance / 3800) if distance else step.pause
 
     def _code(self, name: str) -> int:
         key = self._MODIFIERS.get(name, name)
@@ -413,7 +533,9 @@ class X11Input:
             self._chord(codes)
         return len(text)
 
-    def perform(self, chat: DesktopChat, args: dict[str, Any]) -> tuple[str, Any]:
+    def perform(
+        self, chat: DesktopChat, args: dict[str, Any], with_access: Callable,
+    ) -> tuple[str, Any] | Future[tuple[str, Any]]:
         action = args.get("action")
         if action == "screenshot":
             chat.action = chat.last_action = "Capturing the desktop"
@@ -421,6 +543,7 @@ class X11Input:
         if action in ("press", "type"):
             if self._panel.window.is_active():
                 raise ToolError("Focus the target application before sending keys.")
+            self._pointer.check_selected()
             if action == "type":
                 chat.action = chat.last_action = "Typing text"
                 count = self._type(args.get("text"))
@@ -442,25 +565,28 @@ class X11Input:
                 amount = args.get("amount", 3)
                 if wheel is None or type(amount) is not int or not 1 <= amount <= 12:
                     raise ToolError("Choose a scroll direction and an amount from 1 to 12.")
-                self._move(point)
-                for _ in range(amount):
-                    self._click(wheel)
+                def scroll() -> None:
+                    for _ in range(amount):
+                        self._click(wheel)
+
+                steps = [_PointerStep(point, scroll)]
             elif action == "drag":
                 target = self._point(args, "to_")
-                self._move(point)
-                self._button(self._display, 1, 1, 0)
-                self._move(target)
-                self._button(self._display, 1, 0, 0)
+                steps = [
+                    _PointerStep(point, lambda: self._drag_button(True)),
+                    _PointerStep(target, lambda: self._drag_button(False)),
+                ]
             else:
                 button = self._BUTTON.get(args.get("button", "left"))
                 if button is None:
                     raise ToolError("Choose the left, middle or right mouse button.")
-                self._move(point)
-                if action in ("click", "double_click"):
+                def click() -> None:
                     self._click(button)
+
+                steps = [_PointerStep(point, click if action != "move" else None)]
                 if action == "double_click":
-                    self._click(button, delay=80)
-            message = f"{chat.action} completed."
+                    steps.append(_PointerStep(point, click, pause=.08))
+            return self._animate(steps, f"{chat.action} completed.", with_access)
         else:
             raise ToolError("Unknown Computer Use action.")
         self._flush(self._display)

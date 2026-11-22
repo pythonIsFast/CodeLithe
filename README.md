@@ -128,7 +128,7 @@ An approval can apply once or to a scoped grant for the session. Shell commands 
 
 ### Computer Use
 
-On Linux X11, choose an image-capable model and turn on **Computer Use** in the chat composer. CodeLithe can see the desktop through screenshots, move the system pointer, click, drag, scroll, and type using your keyboard layout. Screenshots go to the selected model for the next turn.
+On Linux X11, choose an image-capable model and turn on **Computer Use** in the chat composer. CodeLithe can see the desktop through screenshots and use its own green pointer to move, click, drag, and scroll. It can also type using your keyboard layout. Screenshots go to the selected model for the next turn.
 
 The floating chat in the lower-right corner shows the current action and accepts follow-up messages. **Turn off** revokes desktop control and stops the current run. Enable the mode from the local CodeLithe window.
 
