@@ -133,7 +133,7 @@ def after_tool(name, arguments, output, context):
             workspace.mkdir()
             store = Store(base / "codelite.db")
             conversation = store.create_conversation(
-                str(workspace), "fixture", Mode.BYPASS.value
+                str(workspace), "custom/ide3/qwen", Mode.BYPASS.value
             )
             items = [
                 {"role": "user", "content": [{"type": "input_text", "text": f"message {index}"}]}
@@ -162,6 +162,45 @@ def after_tool(name, arguments, output, context):
             self.assertEqual(session.last_body["input"], items)
             self.assertEqual([event for event, _ in events].count("compacted"), 2)
             self.assertEqual(events[-1][0], "compaction_finished")
+
+    def test_oversized_transcript_is_compacted_in_sections_on_the_configured_model(self) -> None:
+        class LimitedSession(FakeSession):
+            def __init__(self):
+                self.requests = []
+
+            def context_window(self, _model):
+                return 1024
+
+            def send_responses(self, body, stream=False):
+                self.requests.append(body)
+                text = body["input"][0]["content"][0]["text"]
+                if len(text) > 900:
+                    raise RuntimeError("ContextWindowExceededError: maximum context length exceeded")
+                return {"output_text": "Final memory" if "END_MARKER" in text else "Earlier memory"}
+
+        with tempfile.TemporaryDirectory() as root:
+            base = Path(root)
+            store = Store(base / "codelite.db")
+            chat = store.create_conversation(root, "custom/ide3/qwen", Mode.BYPASS.value)
+            items = [{"role": "user", "content": [{"type": "input_text", "text": "BEGIN_MARKER " + "x" * 2000 + " END_MARKER"}]}]
+            store.append_items(chat.id, items)
+            session = LimitedSession()
+            runner = AgentRunner(
+                session=session, store=store, conversation=chat,
+                permissions=PermissionManager(Mode.BYPASS, lambda *_: None),
+                publish=lambda *_: None,
+                config=AppConfig(data_dir=base, compaction_model="compact-fixture"),
+            )
+
+            runner.compact()
+
+            self.assertEqual({body["model"] for body in session.requests}, {"compact-fixture"})
+            sections = [body["input"][0]["content"][0]["text"] for body in session.requests[1:]]
+            self.assertTrue(any("BEGIN_MARKER" in section for section in sections))
+            self.assertIn("Working memory so far:\nEarlier memory", sections[-1])
+            self.assertIn("END_MARKER", sections[-1])
+            self.assertEqual(chat.compaction_summary, "Final memory")
+            self.assertEqual(store.load_items(chat.id), items)
 
     def test_auto_model_uses_luna_router_and_keeps_its_decision_visible(self) -> None:
         session = RouterSession(

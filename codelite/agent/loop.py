@@ -74,6 +74,14 @@ Do not include filler or repeat large file contents. This summary replaces
 older history, so make it self-contained. Return only the summary text."""
 
 
+def _is_context_limit_error(error: Exception) -> bool:
+    message = str(error).lower()
+    return any(marker in message for marker in (
+        "context_length_exceeded", "contextwindowexceeded", "maximum context length",
+        "context window exceeded", "exceeds the context window", "input is too long",
+    ))
+
+
 class AgentRunner:
     """Runs one user turn to completion, publishing progress as it goes."""
 
@@ -458,32 +466,88 @@ class AgentRunner:
             *tail,
         ]
 
-    def _compaction_model(self) -> str:
-        """Which model should summarize this conversation's history.
+    def _summarize_history(self, history: list[dict[str, Any]]) -> str:
+        model = self._config.compaction_model
+        usage: dict[str, int] = {}
 
-        `config.compaction_model` is a small, fixed "judge" model
-        (gpt-5.6-luna, 272k) picked for cost on an ordinary conversation --
-        but compaction triggers at 80% of *this run's own* window, which is
-        922k for Astra and 1.05M for Sol. On those, the configured model's
-        own request would already be over ITS limit before compaction ever
-        had a chance to run, failing every single time on exactly the
-        large-context conversations that need it most. Falling back to the
-        run's own model is guaranteed to fit: that history already fits
-        there today, which is the only reason it hasn't failed outright.
-        """
-        if is_go_model(self._run_model) or is_custom_model(self._run_model):
-            return self._run_model
-        configured = self._config.compaction_model
-        if configured == self._run_model:
-            return configured
+        def summarize(items: list[dict[str, Any]], instructions: str) -> str:
+            if self.cancelled:
+                return ""
+            response = self._send_model_request(
+                {"model": model, "instructions": instructions, "input": items}, stream=False,
+            )
+            if not isinstance(response, dict):
+                raise RuntimeError("The compaction request did not return a response.")
+            summary = self._response_text(response)
+            if not summary:
+                if response.get("error"):
+                    raise RuntimeError(str(response["error"]))
+                raise RuntimeError("The compaction request returned no summary text.")
+            for key, value in (response.get("usage") or {}).items():
+                if key in ("input_tokens", "output_tokens", "total_tokens") and type(value) is int:
+                    usage[key] = usage.get(key, 0) + value
+            return summary
+
+        visible = [item for item in history if item.get("type") != "reasoning"]
         try:
-            window = self._session.context_window(configured)
-        except Exception:  # noqa: BLE001 - an unreachable catalog means "don't trust it"
+            summary = summarize(visible, COMPACTION_INSTRUCTIONS)
+        except Exception as error:
+            if not _is_context_limit_error(error):
+                raise
+            summary = self._summarize_sections(visible, model, summarize)
+        if summary and not self.cancelled:
+            self._publish_usage(usage)
+            return summary
+        return ""
+
+    def _summarize_sections(
+        self, history: list[dict[str, Any]], model: str,
+        summarize: Callable[[list[dict[str, Any]], str], str],
+    ) -> str:
+        # Text sections can split even a single large tool result without sending
+        # orphaned tool calls to the provider. Embedded image bytes aren't text.
+        def redact_images(item: dict[str, Any]) -> dict[str, Any]:
+            content = item.get("content")
+            if not isinstance(content, list):
+                return item
+            return {**item, "content": [
+                {"type": "input_text", "text": "[Image attachment]"}
+                if isinstance(part, dict) and part.get("type") in ("input_image", "output_image") else part
+                for part in content
+            ]}
+
+        transcript = "\n".join(json.dumps(redact_images(item), ensure_ascii=False) for item in history)
+        try:
+            window = self._session.context_window(model)
+        except Exception:  # noqa: BLE001 - provider limits may be unavailable
             window = None
-        used = self._conversation.context_tokens or 0
-        if window is None or used >= window:
-            return self._run_model
-        return configured
+        budget = max(512, min((window or 32_768), 128_000))
+        instructions = COMPACTION_INSTRUCTIONS + (
+            "\nThe transcript arrives in chronological sections. Merge the latest section with any "
+            "working memory provided. Keep important earlier details and incorporate new information. "
+            "Keep the working memory compact so it fits beside the next section."
+        )
+        offset = 0
+        summary = ""
+        while offset < len(transcript) and not self.cancelled:
+            end = min(offset + budget, len(transcript))
+            if end < len(transcript):
+                boundary = transcript.rfind("\n", offset + budget // 2, end)
+                if boundary != -1:
+                    end = boundary + 1
+            carry = f"Working memory so far:\n{summary}\n\n" if summary else ""
+            items = [{"role": "user", "content": [{
+                "type": "input_text", "text": f"{carry}Transcript section:\n{transcript[offset:end]}",
+            }]}]
+            try:
+                summary = summarize(items, instructions)
+            except Exception as error:
+                if not _is_context_limit_error(error) or end - offset <= 512:
+                    raise
+                budget = max(512, (end - offset) // 2)
+                continue
+            offset = end
+        return summary
 
     def _maybe_compact_history(self, force: bool = False) -> list[dict[str, Any]] | None:
         """Summarize older history before the input window becomes a hard stop.
@@ -499,30 +563,14 @@ class AgentRunner:
         if not history:
             return None
 
-        # The transcript stays in SQLite for the user. The compactor receives
-        # that complete transcript every time and replaces the model's entire
-        # working history with one fresh summary.
-        summary_input = history
-
         self._publish(
             "compaction_started",
             {"context_tokens": self._conversation.context_tokens},
         )
         try:
-            response = self._send_model_request(
-                {
-                    "model": self._compaction_model(),
-                    "instructions": COMPACTION_INSTRUCTIONS,
-                    "input": summary_input,
-                },
-                stream=False,
-            )
-            if not isinstance(response, dict):
-                raise RuntimeError("The compaction request did not return a response.")
-            summary = self._response_text(response)
+            summary = self._summarize_history(history)
             if not summary:
-                raise RuntimeError("The compaction request returned no summary text.")
-            self._publish_usage(response.get("usage") or {})
+                return None
         except Exception as error:  # noqa: BLE001 - fall back to the hard stop safely
             logger.warning("Could not compact conversation history", exc_info=True)
             self._publish("compaction_failed", {"message": str(error)})
