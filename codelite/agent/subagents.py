@@ -28,7 +28,6 @@ class Subagent:
     inbox: list[dict] = field(default_factory=list)
     result: str = ""
     runner: AgentRunner | None = None
-    thread: threading.Thread | None = None
 
     def summary(self) -> dict:
         return {
@@ -139,15 +138,12 @@ class Subagents:
     def _start(self, profile, task, main_model):
         if len(self._jobs) >= 16:
             raise ToolError("This run has reached its 16-subagent limit.")
-        if sum(job.thread is not None and job.thread.is_alive() for job in self._jobs.values()) >= 3:
-            raise ToolError("Three subagents are already active. Wait for one to finish.")
         label = " ".join(task.split())
         if len(label) > 180:
             label = label[:179].rstrip() + "…"
         job = Subagent(uuid4().hex, profile, profile.model or main_model, label)
         self._jobs[job.id] = job
-        job.thread = threading.Thread(target=self._run, args=(job, task), daemon=True)
-        job.thread.start()
+        threading.Thread(target=self._run, args=(job, task), daemon=True).start()
         self._started = True
         self._notify()
         return job.summary()

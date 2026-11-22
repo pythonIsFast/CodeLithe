@@ -1,9 +1,11 @@
 import json
 import sys
 from pathlib import Path
+from queue import Queue
 from threading import Event, Thread
 from time import monotonic, sleep
 
+from codelite.agent.subagents import Subagents
 from codelite.app.runtime import Runtime
 from codelite.app.server import create_app
 from codelite.config import AppConfig
@@ -143,6 +145,30 @@ def test_subagent_can_complete_after_more_than_24_model_rounds(tmp_path, monkeyp
         assert "Received the result." in json.dumps(runtime.store.load_items(chat.id))
     finally:
         runtime.cancel_run(chat.id)
+
+
+def test_can_launch_four_subagents_concurrently(tmp_path, monkeypatch):
+    runtime = Runtime(AppConfig(data_dir=tmp_path / "data"))
+    chat = runtime.create_conversation(str(tmp_path), model="main-model")
+    profile = runtime.agent_profiles.get("general")
+    permissions = PermissionManager(Mode.ASK, lambda *_: None)
+    coordinator = Subagents(runtime, chat, profile, lambda *_: None, permissions, "Inspect the project.")
+    started = Queue()
+    release = Event()
+
+    def work(job, task):
+        started.put(job.id)
+        release.wait(5)
+
+    monkeypatch.setattr(coordinator, "_run", work)
+    try:
+        for n in range(4):
+            coordinator.handle({"action": "start", "profile": "explorer", "task": f"Inspect area {n}."}, chat.model)
+        assert len({started.get(timeout=3) for _ in range(4)}) == 4
+        assert sum(agent["running"] for agent in coordinator.snapshot()) == 4
+    finally:
+        coordinator.close()
+        release.set()
 
 
 def test_coder_writes_and_uses_mcp_while_main_waits(tmp_path, monkeypatch):
