@@ -334,9 +334,6 @@ class AgentRunner:
         ephemeral_inputs: list[dict[str, Any]] = []
         while True:
             step += 1
-            if self._workspace_only and step > 24:
-                self._publish("error", {"message": "Subagent reached its 24-step limit."})
-                return
             if self.cancelled:
                 self._publish("cancelled", {})
                 return

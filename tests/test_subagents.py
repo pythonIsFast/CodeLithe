@@ -113,6 +113,38 @@ def test_main_and_subagent_exchange_messages_and_track_tool_calls(tmp_path, monk
         runtime.cancel_run(chat.id)
 
 
+def test_subagent_can_complete_after_more_than_24_model_rounds(tmp_path, monkeypatch):
+    runtime = Runtime(AppConfig(data_dir=tmp_path / "data"))
+    chat = runtime.create_conversation(str(tmp_path), model="main-model")
+    rounds = 0
+
+    def respond(body, *, stream):
+        nonlocal rounds
+        if any(tool["name"] == "agent_message" for tool in body["tools"]):
+            rounds += 1
+            if rounds <= 26:
+                return tool_call("list_dir", f"inspect-{rounds}", path=".")
+            return reply("Finished the long inspection.")
+        if any(item.get("type") == "function_call_output" for item in body["input"]):
+            assert "Finished the long inspection." in json.dumps(body["input"])
+            return reply("Received the result.")
+        return tool_call("subagents", "start", action="start", profile="explorer", task="Inspect the workspace.")
+
+    monkeypatch.setattr(runtime.session, "send_responses", respond)
+    monkeypatch.setattr(runtime.session, "model_capabilities", lambda _model: {})
+    monkeypatch.setattr(runtime.session, "context_window", lambda _model: 100000)
+    runtime.start_run(chat, "Delegate a long inspection.")
+    live = runtime._state_for(chat)
+    try:
+        live.thread.join(6)
+        assert not live.busy and rounds == 27
+        status, = live.subagents.snapshot()
+        assert status["status"] == "completed" and status["tool_calls"] == 26
+        assert "Received the result." in json.dumps(runtime.store.load_items(chat.id))
+    finally:
+        runtime.cancel_run(chat.id)
+
+
 def test_coder_writes_and_uses_mcp_while_main_waits(tmp_path, monkeypatch):
     runtime = Runtime(AppConfig(data_dir=tmp_path / "data"))
     config = tmp_path / ".codelite" / "mcp.json"
