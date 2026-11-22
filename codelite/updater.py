@@ -23,12 +23,16 @@ import re
 import subprocess
 import sys
 import tempfile
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
 
-RELEASE_API = "https://api.github.com/repos/pythonIsFast/CodeLithe/releases/latest"
+RELEASES_URL = "https://github.com/pythonIsFast/CodeLithe/releases"
 USER_AGENT = "CodeLithe-Updater"
+_CHECKSUM_FILE = "SHA256SUMS.txt"
+_MAX_CHECKSUM_BYTES = 64 * 1024
+_RELEASE_TAG_RE = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+")
 _WINDOWS_UNINSTALL_KEY = (
     "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"
     "{7C4F1E62-9A3B-4D18-B5C6-1F2E8A9D3B47}_is1"
@@ -79,19 +83,49 @@ def _version_tuple(value: str) -> tuple[int, ...]:
     return tuple(int(part) for part in clean.split("."))
 
 
+def _checksums(content: str) -> dict[str, str]:
+    hashes = {}
+    for line in content.splitlines():
+        digest, separator, name = line.partition("  ")
+        if separator and re.fullmatch(r"[a-fA-F0-9]{64}", digest):
+            hashes[name] = digest.lower()
+    return hashes
+
+
 def _release() -> dict[str, Any]:
-    request = urllib.request.Request(
-        RELEASE_API,
-        headers={"Accept": "application/vnd.github+json", "User-Agent": USER_AGENT},
-    )
+    headers = {"User-Agent": USER_AGENT}
+    request = urllib.request.Request(f"{RELEASES_URL}/latest", headers=headers, method="HEAD")
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
-            payload = json.load(response)
-    except (OSError, ValueError) as error:
+            final_url = response.geturl()
+        prefix = f"{RELEASES_URL}/tag/"
+        # GitHub may canonicalize the repository's capitalization.
+        tag = final_url[len(prefix):] if final_url.lower().startswith(prefix.lower()) else ""
+        if not _RELEASE_TAG_RE.fullmatch(tag):
+            raise UpdateError("GitHub did not redirect to a valid CodeLithe release tag.")
+        downloads = f"{RELEASES_URL}/download/{tag}"
+        manifest_url = f"{downloads}/{_CHECKSUM_FILE}"
+        request = urllib.request.Request(manifest_url, headers=headers)
+        with urllib.request.urlopen(request, timeout=15) as response:
+            content = response.read(_MAX_CHECKSUM_BYTES + 1)
+        if len(content) > _MAX_CHECKSUM_BYTES:
+            raise UpdateError("GitHub returned an oversized release checksum file.")
+        hashes = _checksums(content.decode("utf-8"))
+    except (OSError, UnicodeDecodeError) as error:
         raise UpdateError(f"Could not check for updates: {error}") from error
-    if not isinstance(payload, dict):
-        raise UpdateError("GitHub returned an invalid release response.")
-    return payload
+    if not hashes:
+        raise UpdateError("GitHub returned an invalid release checksum file.")
+    return {
+        "tag_name": tag,
+        "assets": [
+            {
+                "name": name,
+                "browser_download_url": f"{downloads}/{urllib.parse.quote(name, safe='')}",
+                "sha256": digest,
+            }
+            for name, digest in hashes.items()
+        ],
+    }
 
 
 def check_update() -> dict[str, Any]:
@@ -115,7 +149,7 @@ def check_update() -> dict[str, Any]:
         "current_version": current,
         "latest_version": latest,
         "available": available,
-        "asset_available": expected in names and "SHA256SUMS.txt" in names,
+        "asset_available": expected in names,
     }
 
 
@@ -213,27 +247,20 @@ def install_update() -> dict[str, str]:
         else f"CodeLite-{latest}-windows-setup.exe"
     )
     assets = {
-        str(asset.get("name")): str(asset.get("browser_download_url") or "")
+        str(asset.get("name")): asset
         for asset in release.get("assets") or []
         if isinstance(asset, dict)
     }
-    if not assets.get(expected) or not assets.get("SHA256SUMS.txt"):
+    asset = assets.get(expected, {})
+    url = asset.get("browser_download_url")
+    expected_hash = asset.get("sha256")
+    if not url or not expected_hash:
         raise UpdateError("The release does not contain the expected installer or checksums.")
 
     directory = Path(tempfile.mkdtemp(prefix="codelite-update-"))
     installer = directory / expected
-    checksums = directory / "SHA256SUMS.txt"
-    _download(assets[expected], installer)
-    _download(assets["SHA256SUMS.txt"], checksums)
-
-    expected_hash = None
-    for line in checksums.read_text(encoding="utf-8").splitlines():
-        digest, _, name = line.partition("  ")
-        if name == expected:
-            expected_hash = digest.lower()
-            break
-    actual_hash = _sha256(installer)
-    if not expected_hash or actual_hash != expected_hash:
+    _download(url, installer)
+    if _sha256(installer) != expected_hash:
         raise UpdateError("The downloaded installer's SHA-256 checksum did not match.")
 
     _install_after_exit(installer, platform, directory, os.getpid())
