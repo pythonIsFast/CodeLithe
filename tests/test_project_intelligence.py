@@ -5,13 +5,15 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from codelite.app.server import create_app
 from codelite.config import AppConfig
-from codelite.permission.manager import PermissionManager
+from codelite.permission.manager import PermissionDenied, PermissionManager
 from codelite.permission.modes import Mode
 from codelite.project.context import build_project_context, discover_skills, read_skill
 from codelite.tools.code_intelligence import CODE_INTELLIGENCE
+from codelite.tools.base import ToolError
 from codelite.tools.context import ToolContext
 from codelite.tools.extensions import EXTENSIONS
 from codelite.tools.memory import PROJECT_MEMORY
@@ -116,20 +118,36 @@ class ProjectIntelligenceTests(unittest.TestCase):
             workspace = Path(root)
             config_dir = workspace / ".codelite"
             config_dir.mkdir()
-            config_dir.joinpath("mcp.json").write_text(
-                json.dumps(
-                    {
-                        "mcpServers": {
-                            "fixture": {
-                                "command": sys.executable,
-                                "args": [str(FIXTURES / "fake_mcp_server.py")],
-                            }
-                        }
-                    }
-                ),
-                encoding="utf-8",
-            )
+            config = config_dir / "mcp.json"
+            existing = {"mcpServers": {"inactive": {"disabled": True}}, "metadata": 1}
+            config.write_text(json.dumps(existing), encoding="utf-8")
             context = self.context(workspace, Path(root) / "data")
+            add = {
+                "action": "add_mcp_server", "server": "fixture", "command": sys.executable,
+                "args": [str(FIXTURES / "fake_mcp_server.py")],
+            }
+            with patch.object(context.permissions, "require_write", side_effect=PermissionDenied("denied")):
+                with self.assertRaises(PermissionDenied):
+                    EXTENSIONS.run(add, context)
+            self.assertEqual(json.loads(config.read_text(encoding="utf-8")), existing)
+
+            concurrent = {**existing, "metadata": 2}
+            with patch.object(context.permissions, "require_write", side_effect=lambda *_: config.write_text(
+                json.dumps(concurrent), encoding="utf-8",
+            )):
+                with self.assertRaisesRegex(ToolError, "changed while adding"):
+                    EXTENSIONS.run(add, context)
+            self.assertEqual(json.loads(config.read_text(encoding="utf-8")), concurrent)
+
+            with patch.object(context.permissions, "require_shell", side_effect=PermissionDenied("denied")):
+                self.assertTrue(json.loads(EXTENSIONS.run(add, context))["saved"])
+                with self.assertRaises(PermissionDenied):
+                    EXTENSIONS.run({"action": "list_mcp_tools", "server": "fixture"}, context)
+            with self.assertRaisesRegex(ToolError, "already exists"):
+                EXTENSIONS.run({**add, "server": "inactive"}, context)
+            saved = json.loads(config.read_text(encoding="utf-8"))
+            self.assertEqual(saved["metadata"], 2)
+            self.assertEqual(saved["mcpServers"]["inactive"], {"disabled": True})
             tools = json.loads(
                 EXTENSIONS.run(
                     {"action": "list_mcp_tools", "server": "fixture"}, context

@@ -148,6 +148,8 @@ The floating chat in the lower-right corner shows the current action and accepts
 | `.codelite/mcp.json` and `.codelite/lsp.json` | MCP and language server configuration |
 | `.codelite/tools/` and `.codelite/plugins/` | Local Python tools and hooks |
 
+Ask the main agent to add a stdio MCP server by name, executable, and arguments. It saves the server for the current project and uses the existing execution permissions when connecting for the first time.
+
 ## Development
 
 The desktop layer uses Flask, pywebview, and plain JavaScript. The provider layer uses Python's standard library.

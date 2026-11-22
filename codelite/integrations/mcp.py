@@ -15,13 +15,16 @@ model asks to discover or call one, and one process is reused per workspace.
 from __future__ import annotations
 
 import atexit
+import difflib
 import json
 import os
+import re
 import subprocess
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from tempfile import NamedTemporaryFile
+from typing import Any, Callable
 
 from .. import settings
 from ..project.context import MCP_CONFIG_PATH
@@ -205,20 +208,93 @@ class McpClient:
                 self._process.kill()
 
 
-def load_server_configs(workspace: Path) -> dict[str, dict[str, Any]]:
+_config_lock = threading.Lock()
+
+
+def _config_path(workspace: Path) -> Path:
     root = Path(workspace).resolve()
     path = (root / MCP_CONFIG_PATH).resolve()
     if root not in path.parents:
         raise McpError(f"{MCP_CONFIG_PATH} resolves outside the workspace.")
+    return path
+
+
+def _read_config(path: Path) -> str | None:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        return path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        return {}
-    except (OSError, UnicodeDecodeError, ValueError) as error:
+        return None
+    except (OSError, UnicodeDecodeError) as error:
+        raise McpError(f"Could not read {MCP_CONFIG_PATH}: {error}") from error
+
+
+def _parse_config(content: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(content)
+    except ValueError as error:
         raise McpError(f"Could not read {MCP_CONFIG_PATH}: {error}") from error
     servers = payload.get("mcpServers") if isinstance(payload, dict) else None
     if not isinstance(servers, dict):
         raise McpError(f"{MCP_CONFIG_PATH} must contain an `mcpServers` object.")
+    return payload
+
+
+def _write_config(path: Path, content: str) -> None:
+    temporary = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as file:
+            temporary = Path(file.name)
+            file.write(content)
+        temporary.replace(path)
+        temporary = None
+    except OSError as error:
+        raise McpError(f"Could not save {MCP_CONFIG_PATH}: {error}") from error
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def save_project_config(workspace: Path, content: str) -> None:
+    with _config_lock:
+        _write_config(_config_path(workspace), content)
+
+
+def add_server(
+    workspace: Path, name: str, command: str, args: list[str], approve: Callable[[str, str], None],
+) -> None:
+    if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", name):
+        raise McpError("Choose a server name of 1–64 letters, digits, dots, underscores, or hyphens.")
+    if not isinstance(args, list) or not all(isinstance(value, str) and "\0" not in value for value in args):
+        raise McpError("MCP server `args` must be an array of strings without null bytes.")
+    config = {"command": command, "args": args}
+    server_command(config)
+    if "\0" in command:
+        raise McpError("MCP server `command` must not contain null bytes.")
+
+    path = _config_path(workspace)
+    before = _read_config(path)
+    payload = _parse_config(before) if before is not None else {"mcpServers": {}}
+    if name in payload["mcpServers"]:
+        raise McpError(f"MCP server `{name}` already exists.")
+    payload["mcpServers"][name] = config
+    after = json.dumps(payload, indent=2) + "\n"
+
+    # Show only the new entry in the dialog, so existing env values stay out of the transcript.
+    diff = "\n".join(difflib.unified_diff(
+        [], json.dumps({name: config}, indent=2).splitlines(),
+        fromfile=str(MCP_CONFIG_PATH), tofile=str(MCP_CONFIG_PATH), lineterm="",
+    ))
+    approve(str(path), diff)
+    with _config_lock:
+        if _config_path(workspace) != path or _read_config(path) != before:
+            raise McpError(f"{MCP_CONFIG_PATH} changed while adding the server. Retry the addition.")
+        _write_config(path, after)
+
+
+def load_server_configs(workspace: Path) -> dict[str, dict[str, Any]]:
+    content = _read_config(_config_path(workspace))
+    servers = _parse_config(content)["mcpServers"] if content is not None else {}
     return {
         str(name): value
         for name, value in servers.items()

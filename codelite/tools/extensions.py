@@ -13,6 +13,7 @@ from typing import Any
 
 from ..integrations.mcp import (
     McpError,
+    add_server,
     get_client,
     is_started,
     load_server_configs,
@@ -21,6 +22,8 @@ from ..integrations.mcp import (
 from ..project.context import discover_skills, read_skill
 from .base import Tool, ToolError, object_schema
 from .context import ToolContext
+
+_ACTIONS = ["list", "read_skill", "add_mcp_server", "list_mcp_tools", "call_mcp_tool"]
 
 
 def _compact_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -60,10 +63,16 @@ def _run_extensions(args: dict[str, Any], ctx: ToolContext) -> str:
                 return read_skill(ctx.workspace, ctx.data_dir, name)
             except KeyError as error:
                 raise ToolError(f"No skill named `{name}` was found.") from error
-        if action in {"list_mcp_tools", "call_mcp_tool"}:
+        if action in ("add_mcp_server", "list_mcp_tools", "call_mcp_tool"):
             server = args.get("server")
             if not isinstance(server, str) or not server:
                 raise ToolError("`server` is required for MCP actions.")
+            if action == "add_mcp_server":
+                add_server(
+                    ctx.workspace, server, args.get("command"), args.get("args", []),
+                    ctx.permissions.require_write,
+                )
+                return json.dumps({"server": server, "saved": True, "next_action": "list_mcp_tools"})
             _ensure_mcp_permission(ctx, server)
             client = get_client(ctx.workspace, server)
             if action == "list_mcp_tools":
@@ -77,24 +86,26 @@ def _run_extensions(args: dict[str, Any], ctx: ToolContext) -> str:
             return json.dumps(client.call_tool(name, arguments), indent=2)
     except McpError as error:
         raise ToolError(str(error)) from error
-    raise ToolError(
-        "`action` must be list, read_skill, list_mcp_tools, or call_mcp_tool."
-    )
+    raise ToolError(f"`action` must be one of: {', '.join(_ACTIONS)}.")
 
 
 EXTENSIONS = Tool(
     name="extensions",
     description=(
         "Lazily discover project/user skills and configured MCP servers. Read only a "
-        "relevant skill, or list/call tools on one MCP server, to minimize context usage."
+        "relevant skill or list/call tools on one MCP server. When the user asks to connect "
+        "an MCP server, use add_mcp_server with its name, stdio executable and optional "
+        "arguments (no secrets). This saves it for the current project."
     ),
     parameters=object_schema(
         {
             "action": {
                 "type": "string",
-                "enum": ["list", "read_skill", "list_mcp_tools", "call_mcp_tool"],
+                "enum": _ACTIONS,
             },
             "server": {"type": "string"},
+            "command": {"type": "string", "description": "Executable for add_mcp_server."},
+            "args": {"type": "array", "items": {"type": "string"}, "description": "Executable arguments for add_mcp_server."},
             "name": {"type": "string"},
             "arguments": {"type": "object", "additionalProperties": True},
         },

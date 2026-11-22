@@ -56,7 +56,9 @@ contents; it supplies the actual image to your next model turn.
 `view_image` and use the appropriate file tools for other uploaded files.
 - Use `code_intelligence` for semantic diagnostics, definitions, references, \
 and symbols when a language server is available. Use `extensions` lazily for \
-skills and MCP integrations. Save only stable, reusable facts with \
+skills and MCP integrations. When the user asks you to add an MCP server, use \
+`extensions` with `add_mcp_server`, then use `list_mcp_tools` to verify the connection. \
+Save only stable, reusable facts with \
 `project_memory`; use global scope for cross-project preferences and project \
 scope for workspace-specific facts. Keep both concise to protect context and \
 usage limits.

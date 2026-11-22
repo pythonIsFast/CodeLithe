@@ -47,6 +47,7 @@ from ..config import (
 )
 from ..db.store import Conversation
 from ..importer import import_codex_sessions, preview_codex_sessions
+from ..integrations.mcp import McpError, save_project_config as save_mcp_config
 from ..settings import schema as behaviour_schema
 from ..updater import UpdateError, check_update, install_update
 from ..permission.modes import Mode
@@ -816,9 +817,12 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
         if workspace not in target.parents:
             return jsonify({"error": "Project setting path leaves the workspace."}), 400
         try:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(content, encoding="utf-8")
-        except OSError as exc:
+            if kind == "mcp":
+                save_mcp_config(workspace, content)
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content, encoding="utf-8")
+        except (OSError, McpError) as exc:
             return jsonify({"error": f"Could not save {relative}: {exc}"}), 500
         return jsonify({"saved": str(relative), "content": content})
 
