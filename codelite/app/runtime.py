@@ -57,7 +57,7 @@ PLAN_USAGE_KEY = "plan_usage"
 BEHAVIOUR_KEY = "behaviour"
 ACTIVITY_EVENTS = {
     "permission_request", "question_request", "error", "compaction_failed",
-    "compaction_skipped", "cancelled",
+    "compaction_skipped", "cancelled", "permission_cancelled",
 }
 
 
@@ -282,7 +282,7 @@ class Runtime:
             if event in ("permission_request", "question_request"):
                 activity.pending.add(request_id)
                 activity.status = "waiting"
-            elif event == "answered":
+            elif event in ("answered", "permission_cancelled"):
                 activity.pending.discard(request_id)
                 if not activity.pending:
                     activity.status = "running"
@@ -378,7 +378,7 @@ class Runtime:
             )
             allowed = frozenset(profile.tools) if profile.tools is not None else None
             publish = lambda event, data: self.publish(conversation.id, event, data)
-            subagents = Subagents(self, conversation, profile, publish) if (
+            subagents = Subagents(self, conversation, profile, publish, state.permissions, user_text) if (
                 allowed is None or "subagents" in allowed
             ) else None
             state.subagents = subagents

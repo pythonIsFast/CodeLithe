@@ -40,7 +40,7 @@ from typing import Any, Callable, Iterator
 from .. import settings
 from ..config import FAST_SERVICE_TIER, FLEX_SERVICE_TIER, AppConfig, context_window_for, normalize_effort
 from ..db.store import Conversation, Store
-from ..permission.manager import PermissionDenied, PermissionManager
+from ..permission.manager import AgentPermissions, PermissionDenied, PermissionManager
 from ..provider.custom import is_custom_model
 from ..provider.opencode_go import is_go_model
 from ..provider.pollinations import POLLINATIONS_MODEL
@@ -82,7 +82,7 @@ class AgentRunner:
         session: Session,
         store: Store,
         conversation: Conversation,
-        permissions: PermissionManager,
+        permissions: PermissionManager | AgentPermissions,
         publish: Publisher,
         config: AppConfig,
         questions: QuestionManager | None = None,
@@ -91,7 +91,7 @@ class AgentRunner:
         allowed_tools: frozenset[str] | None = None,
         agent_control: Callable[[dict[str, Any], str], Any] | None = None,
         agent_inbox: Callable[[], list[dict[str, Any]]] | None = None,
-        agent_wait: Callable[[], None] | None = None,
+        agent_wait: Callable[[bool], None] | None = None,
         coordination_tool: str = "",
         workspace_only: bool = False,
     ) -> None:
@@ -387,7 +387,7 @@ class AgentRunner:
                 if self._apply_pending_updates(items):
                     continue
                 if self._agent_wait is not None:
-                    self._agent_wait()
+                    self._agent_wait(False)
                     if self.cancelled:
                         self._publish("cancelled", {})
                         return
@@ -411,6 +411,8 @@ class AgentRunner:
                 items.extend(direct_inputs)
                 ephemeral_inputs.extend(direct_inputs)
 
+            if self._agent_wait is not None and not self.cancelled:
+                self._agent_wait(True)
             if self.cancelled:
                 self._publish("cancelled", {})
                 return

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .. import settings
-from ..permission.manager import PermissionManager
+from ..permission.manager import AgentPermissions, PermissionManager
 from ..provider.session import Session
 from ..questions import QuestionManager
 
@@ -45,7 +45,7 @@ class ToolContext:
     """
 
     workspace: Path
-    permissions: PermissionManager
+    permissions: PermissionManager | AgentPermissions
     session: Session
     questions: QuestionManager | None = None
     data_dir: Path = Path(".")

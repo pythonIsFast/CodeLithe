@@ -316,31 +316,27 @@ _clients: dict[tuple[str, str], tuple[str, McpClient]] = {}
 _clients_lock = threading.Lock()
 
 
-def is_started(workspace: Path, name: str) -> bool:
+def _live_client(key: tuple[str, str], fingerprint: str) -> McpClient | None:
+    entry = _clients.get(key)
+    return entry[1] if entry and entry[0] == fingerprint and entry[1].alive else None
+
+
+def get_client(workspace: Path, name: str, authorize: Callable[[list[str]], None]) -> McpClient:
     workspace = Path(workspace).resolve()
     config = load_server_configs(workspace).get(name)
-    if config is None:
-        return False
-    fingerprint = json.dumps(config, sort_keys=True)
-    key = (str(workspace), name)
-    with _clients_lock:
-        entry = _clients.get(key)
-    return bool(entry and entry[0] == fingerprint and entry[1].alive)
-
-
-def get_client(workspace: Path, name: str) -> McpClient:
-    workspace = Path(workspace).resolve()
-    configs = load_server_configs(workspace)
-    config = configs.get(name)
     if config is None:
         raise McpError(f"No MCP server named `{name}` is configured.")
     fingerprint = json.dumps(config, sort_keys=True)
     key = (str(workspace), name)
     with _clients_lock:
-        existing = _clients.get(key)
-        if existing and existing[0] == fingerprint and existing[1].alive:
-            return existing[1]
-        if existing:
+        if client := _live_client(key, fingerprint):
+            return client
+    command = server_command(config)
+    authorize(command)
+    with _clients_lock:
+        if client := _live_client(key, fingerprint):
+            return client
+        if (existing := _clients.get(key)):
             existing[1].close()
         environment = config.get("env") or {}
         if not isinstance(environment, dict) or not all(
@@ -348,7 +344,7 @@ def get_client(workspace: Path, name: str) -> McpClient:
             for key, value in environment.items()
         ):
             raise McpError("MCP server `env` must map strings to strings.")
-        client = McpClient(name, server_command(config), workspace, environment)
+        client = McpClient(name, command, workspace, environment)
         _clients[key] = (fingerprint, client)
         return client
 

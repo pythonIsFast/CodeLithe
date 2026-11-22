@@ -15,15 +15,14 @@ from ..integrations.mcp import (
     McpError,
     add_server,
     get_client,
-    is_started,
     load_server_configs,
-    server_command,
 )
 from ..project.context import discover_skills, read_skill
 from .base import Tool, ToolError, object_schema
 from .context import ToolContext
 
-_ACTIONS = ["list", "read_skill", "add_mcp_server", "list_mcp_tools", "call_mcp_tool"]
+_MCP_ACTIONS = ["list", "list_mcp_tools", "call_mcp_tool"]
+_ACTIONS = [*_MCP_ACTIONS, "read_skill", "add_mcp_server"]
 
 
 def _compact_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -35,17 +34,6 @@ def _compact_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
         }
         for tool in tools
     ]
-
-
-def _ensure_mcp_permission(ctx: ToolContext, server: str) -> None:
-    if is_started(ctx.workspace, server):
-        return
-    configs = load_server_configs(ctx.workspace)
-    config = configs.get(server)
-    if config is None:
-        raise ToolError(f"No MCP server named `{server}` is configured.")
-    command = shlex.join(server_command(config))
-    ctx.permissions.require_shell(command, ctx.task_prompt, str(ctx.workspace))
 
 
 def _run_extensions(args: dict[str, Any], ctx: ToolContext) -> str:
@@ -73,8 +61,9 @@ def _run_extensions(args: dict[str, Any], ctx: ToolContext) -> str:
                     ctx.permissions.require_write,
                 )
                 return json.dumps({"server": server, "saved": True, "next_action": "list_mcp_tools"})
-            _ensure_mcp_permission(ctx, server)
-            client = get_client(ctx.workspace, server)
+            client = get_client(ctx.workspace, server, lambda argv: ctx.permissions.require_shell(
+                shlex.join(argv), ctx.task_prompt, str(ctx.workspace),
+            ))
             if action == "list_mcp_tools":
                 return json.dumps(_compact_tools(client.list_tools()), indent=2)
             name = args.get("name")
@@ -112,4 +101,32 @@ EXTENSIONS = Tool(
         required=["action"],
     ),
     run=_run_extensions,
+)
+
+
+def _run_mcp(args: dict[str, Any], ctx: ToolContext) -> str:
+    action = args.get("action")
+    if action not in _MCP_ACTIONS:
+        raise ToolError("Use list, list_mcp_tools, or call_mcp_tool with configured MCP servers.")
+    if action == "list":
+        try:
+            return json.dumps({"mcp_servers": sorted(load_server_configs(ctx.workspace))})
+        except McpError as error:
+            raise ToolError(str(error)) from error
+    return _run_extensions(args, ctx)
+
+
+MCP = Tool(
+    name="mcp",
+    description="List configured project MCP servers, discover their tools, or call a tool on one server.",
+    parameters=object_schema(
+        {
+            "action": {"type": "string", "enum": _MCP_ACTIONS},
+            "server": {"type": "string"},
+            "name": {"type": "string"},
+            "arguments": {"type": "object", "additionalProperties": True},
+        },
+        required=["action"],
+    ),
+    run=_run_mcp,
 )

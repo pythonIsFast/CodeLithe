@@ -27,7 +27,7 @@ from .base import Tool
 from .browser import BROWSER
 from .code_intelligence import CODE_INTELLIGENCE
 from .computer import COMPUTER_USE
-from .extensions import EXTENSIONS
+from .extensions import EXTENSIONS, MCP
 from .files import EDIT_FILE, LIST_DIR, READ_FILE, WRITE_FILE
 from .images import GENERATE_IMAGE
 from .memory import PROJECT_MEMORY
@@ -53,6 +53,7 @@ TOOLS: tuple[Tool, ...] = (
     FIND_FILES,
     CODE_INTELLIGENCE,
     EXTENSIONS,
+    MCP,
     PROJECT_MEMORY,
     GENERATE_IMAGE,
     SHOWCASE_FILE,
@@ -93,6 +94,7 @@ def to_responses_tools(
         tool.to_responses_tool(asynchronous=asynchronous and tool.name in ASYNC_SAFE_TOOL_NAMES)
         for tool in TOOLS
         if (tool is not COMPUTER_USE or computer_use)
+        and (tool is not MCP or allowed is not None)
         and (tool not in (SUBAGENTS, AGENT_MESSAGE) or tool.name == coordination_tool)
         and (allowed is None or tool.name in allowed)
     ]

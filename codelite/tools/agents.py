@@ -13,11 +13,13 @@ def _run(args, context):
 
 SUBAGENTS = Tool(
     "subagents",
-    "Manage read-only subagents. Use profiles to find profile IDs. Start with profile and task; "
-    "list shows name, model, state and tool-call count. Send a message or wait for results by id. "
-    "Handle their questions and wait for their results before completing your own reply.",
+    "Manage subagents. Use Coder for implementation and configured MCP tools, and Explorer or Reviewer "
+    "for read-only work. Assign each writer distinct files. Use profiles to find profile IDs. Start with profile and task; "
+    "For parallel work, issue all start calls in the same response. The main agent automatically "
+    "pauses after delegation and receives questions and results as they arrive. Use list to inspect "
+    "status when needed and send to reply by ID.",
     object_schema({
-        "action": {"type": "string", "enum": ["profiles", "start", "list", "send", "wait", "stop"]},
+        "action": {"type": "string", "enum": ["profiles", "start", "list", "send", "stop"]},
         "id": {"type": "string"},
         "profile": {"type": "string"},
         "task": {"type": "string"},
@@ -28,7 +30,7 @@ SUBAGENTS = Tool(
 
 AGENT_MESSAGE = Tool(
     "agent_message",
-    "Send a finding or a question to the main agent with send. Use wait to receive a reply "
+    "Use send for questions or findings the main agent needs before you finish. Use wait to receive a reply "
     "if required. Incoming messages are also delivered between your model turns.",
     object_schema({
         "action": {"type": "string", "enum": ["send", "wait"]},

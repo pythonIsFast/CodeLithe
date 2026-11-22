@@ -81,6 +81,7 @@ class PendingRequest:
     diff: str = ""
     #: The narrow capability that a session approval will grant.
     session_scope: str = ""
+    agent_scope: AgentPermissions | None = field(default=None, repr=False)
     _session_grant: str = field(default="", repr=False)
     created_at: str = field(
         default_factory=lambda: datetime.now(tz=timezone.utc).isoformat()
@@ -88,6 +89,7 @@ class PendingRequest:
     _event: threading.Event = field(default_factory=threading.Event, repr=False)
     _reply: Reply | None = field(default=None, repr=False)
     _feedback: str = field(default="", repr=False)
+    _cancelled: bool = field(default=False, repr=False)
 
     def as_event_payload(self) -> dict[str, Any]:
         return {
@@ -97,6 +99,7 @@ class PendingRequest:
             "diff": self.diff,
             "created_at": self.created_at,
             "session_scope": self.session_scope,
+            **({"agent_name": self.agent_scope.name} if self.agent_scope else {}),
         }
 
 
@@ -131,39 +134,44 @@ class PermissionManager:
 
     # -- gates ---------------------------------------------------------------
 
-    def require_write(self, path: str, diff: str = "") -> None:
+    def require_write(self, path: str, diff: str = "", *, scope: AgentPermissions | None = None) -> None:
         """Gate a file write. Raises :class:`PermissionDenied` if refused.
 
         ``diff`` is shown to the user so they approve a change rather than a
         bare filename -- without it the dialog asks them to trust a path.
         """
-        decision = self._decide_write(path, diff)
+        decision = self._decide_write(path, diff, scope)
+        if scope:
+            scope.check_active()
         if not decision.allowed:
             raise PermissionDenied(
                 decision.reason or f"Permission to write {path} was denied by the user."
             )
 
     def require_shell(
-        self, command: str, task_prompt: str = "", working_directory: str = "."
+        self, command: str, task_prompt: str = "", working_directory: str = ".",
+        *, scope: AgentPermissions | None = None,
     ) -> None:
         """Gate a shell command. Raises :class:`PermissionDenied` if refused."""
-        decision = self._decide_shell(command, task_prompt, working_directory)
+        decision = self._decide_shell(command, task_prompt, working_directory, scope)
+        if scope:
+            scope.check_active()
         if not decision.allowed:
             raise PermissionDenied(
                 decision.reason
                 or f"Permission to run `{command}` was denied by the user."
             )
 
-    def _decide_write(self, path: str, diff: str = "") -> Decision:
+    def _decide_write(self, path: str, diff: str = "", scope: AgentPermissions | None = None) -> Decision:
         mode = self.mode
         if not mode.writes_need_approval:
             return Decision(allowed=True, reason=f"{mode.label} mode", source="mode")
         if self._has_write_grant(path):
             return Decision(allowed=True, reason="Approved for this session", source="session")
-        return self._ask_user("write", path, diff=diff)
+        return self._ask_user("write", path, diff=diff, scope=scope)
 
     def _decide_shell(
-        self, command: str, task_prompt: str, working_directory: str
+        self, command: str, task_prompt: str, working_directory: str, scope: AgentPermissions | None = None,
     ) -> Decision:
         mode = self.mode
         if mode is Mode.BYPASS:
@@ -181,7 +189,7 @@ class PermissionManager:
                 source="judge",
             )
 
-        return self._ask_user("shell", command, working_directory=working_directory)
+        return self._ask_user("shell", command, working_directory=working_directory, scope=scope)
 
     def _run_judge(self, command: str, task_prompt: str) -> tuple[bool, str]:
         if self._judge is None:
@@ -205,6 +213,7 @@ class PermissionManager:
         detail: str,
         diff: str = "",
         working_directory: str = ".",
+        scope: AgentPermissions | None = None,
     ) -> Decision:
         request = PendingRequest(
             id=uuid.uuid4().hex,
@@ -212,11 +221,14 @@ class PermissionManager:
             detail=detail,
             diff=diff,
             session_scope=self._session_scope(kind, detail, working_directory),
+            agent_scope=scope,
             _session_grant=(
                 self._write_scope(detail) if kind == "write" else working_directory or "."
             ),
         )
         with self._lock:
+            if scope:
+                scope.check_active()
             self._pending[request.id] = request
         self._publish("permission_request", request.as_event_payload())
 
@@ -232,6 +244,9 @@ class PermissionManager:
                     self._shell_grants.add(
                         (request._session_grant, self._normalize_command(detail))
                     )
+
+        if request._cancelled:
+            self._publish("permission_cancelled", {"id": request.id})
 
         if reply in ("once", "session"):
             return Decision(
@@ -252,26 +267,26 @@ class PermissionManager:
         """Resolve a pending request, unblocking the waiting tool thread."""
         with self._lock:
             request = self._pending.get(request_id)
-            if request is None:
+            if request is None or request._event.is_set():
                 return False
             request._reply = reply
             request._feedback = feedback
-        request._event.set()
+            request._event.set()
         return True
 
     def list_pending(self) -> list[dict[str, Any]]:
         with self._lock:
-            return [r.as_event_payload() for r in self._pending.values()]
+            return [r.as_event_payload() for r in self._pending.values() if not r._event.is_set()]
 
-    def cancel_pending(self) -> None:
+    def cancel_pending(self, scope: AgentPermissions | None = None) -> None:
         """Deny everything still waiting -- used when a run is aborted."""
         with self._lock:
-            requests = list(self._pending.values())
-        for request in requests:
-            if request._reply is None:
-                request._reply = "deny"
-                request._feedback = "The run was cancelled."
-            request._event.set()
+            for request in self._pending.values():
+                if (scope is None or request.agent_scope is scope) and request._reply is None:
+                    request._cancelled = True
+                    request._reply = "deny"
+                    request._feedback = "The run was cancelled."
+                    request._event.set()
 
     @staticmethod
     def _normalize_command(command: str) -> str:
@@ -300,3 +315,33 @@ class PermissionManager:
     def _has_shell_grant(self, command: str, working_directory: str) -> bool:
         with self._lock:
             return (working_directory or ".", self._normalize_command(command)) in self._shell_grants
+
+
+class AgentPermissions:
+    """Use the chat policy and grants, with independently cancellable prompts."""
+
+    def __init__(self, manager: PermissionManager, name: str, user_task: str) -> None:
+        self._manager = manager
+        self.name = name
+        self._user_task = user_task
+        self._cancelled = threading.Event()
+
+    @property
+    def mode(self) -> Mode:
+        return self._manager.mode
+
+    def check_active(self) -> None:
+        if self._cancelled.is_set():
+            raise PermissionDenied("This subagent was stopped.")
+
+    def require_write(self, path: str, diff: str = "") -> None:
+        self.check_active()
+        self._manager.require_write(path, diff, scope=self)
+
+    def require_shell(self, command: str, task_prompt: str = "", working_directory: str = ".") -> None:
+        self.check_active()
+        self._manager.require_shell(command, self._user_task, working_directory, scope=self)
+
+    def cancel_pending(self) -> None:
+        self._cancelled.set()
+        self._manager.cancel_pending(self)

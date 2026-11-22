@@ -276,6 +276,7 @@ const TOOL_CATEGORY = {
   edit_file: "write",
   shell: "shell",
   extensions: "extension",
+  mcp: "extension",
   subagents: "agents",
   web_search: "websearch",
   web_fetch: "webfetch",
@@ -315,6 +316,7 @@ const TOOL_PRESENTATION = {
   code_intelligence: { verb: "Code intelligence", text: firstText },
   project_memory: { verb: "Memory", text: firstText },
   extensions: { verb: "Extension", text: firstText },
+  mcp: { verb: "MCP", text: (args) => args.name || args.server || "servers" },
   subagents: { text: (args) => ({
     profiles: "Check agent profiles",
     start: args.task ? `Delegate · ${args.task}` : "Start a subagent",

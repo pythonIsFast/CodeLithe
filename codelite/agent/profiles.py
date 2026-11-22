@@ -10,6 +10,7 @@ from ..db.store import Store
 from ..tools import registry
 
 READ_TOOLS = frozenset({"read_file", "list_dir", "grep", "find_files"})
+CODING_TOOLS = READ_TOOLS | {"write_file", "edit_file", "mcp"}
 DEFAULT_AGENT = "general"
 
 
@@ -29,6 +30,7 @@ class AgentProfile:
 
 BUILTINS = (
     AgentProfile(DEFAULT_AGENT, "General", builtin=True),
+    AgentProfile("coder", "Coder", "Implement the assigned changes in the project and report the edited files.", tools=tuple(sorted(CODING_TOOLS)), builtin=True),
     AgentProfile("explorer", "Explorer", "Find relevant files and report evidence with paths.", tools=tuple(sorted(READ_TOOLS)), builtin=True),
     AgentProfile("reviewer", "Reviewer", "Review changes for correctness and regressions. Report actionable findings with paths and lines.", tools=tuple(sorted(READ_TOOLS)), builtin=True),
 )

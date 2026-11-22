@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import difflib
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from .base import Tool, ToolError, object_schema
@@ -116,13 +117,34 @@ def _build_diff(label: str, before: str, after: str) -> str:
     return "".join(lines)
 
 
+_write_lock = Lock()
+
+
+def _file_revision(path: Path) -> tuple[int, ...] | None:
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return None
+    return (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+
+
+def _write_if_current(path: Path, before: tuple[int, ...] | None, content: str, ctx: ToolContext) -> None:
+    with _write_lock:
+        if ctx.resolve(str(path)) != path or _file_revision(path) != before:
+            raise ToolError(f"{ctx.relative(path)} changed during this operation. Read it again before writing.")
+        if before is None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+
 def _run_write_file(args: dict[str, Any], ctx: ToolContext) -> str:
     path = ctx.resolve(args.get("path", ""))
     content = args.get("content")
     if content is None:
         raise ToolError("`content` is required.")
 
-    existed = path.exists()
+    revision = _file_revision(path)
+    existed = revision is not None
     label = ctx.relative(path)
     # Read the old version only to show the user what changes; a file we
     # cannot decode still gets written, it just gets no diff.
@@ -133,8 +155,7 @@ def _run_write_file(args: dict[str, Any], ctx: ToolContext) -> str:
     diff = _build_diff(label, before, str(content))
     ctx.permissions.require_write(label, diff)
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(str(content), encoding="utf-8")
+    _write_if_current(path, revision, str(content), ctx)
     verb = "Overwrote" if existed else "Created"
     line_count = len(str(content).splitlines())
     return f"{verb} {ctx.relative(path)} ({line_count} lines)."
@@ -153,6 +174,7 @@ def _run_edit_file(args: dict[str, Any], ctx: ToolContext) -> str:
     if old == new:
         raise ToolError("`old_string` and `new_string` are identical.")
 
+    revision = _file_revision(path)
     original = _read_text(path)
     occurrences = original.count(old)
     if occurrences == 0:
@@ -171,7 +193,7 @@ def _run_edit_file(args: dict[str, Any], ctx: ToolContext) -> str:
     ctx.permissions.require_write(
         ctx.relative(path), _build_diff(ctx.relative(path), original, updated)
     )
-    path.write_text(updated, encoding="utf-8")
+    _write_if_current(path, revision, updated, ctx)
     changed = occurrences if replace_all else 1
     return f"Edited {ctx.relative(path)} ({changed} replacement{'s' if changed != 1 else ''})."
 

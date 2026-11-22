@@ -90,6 +90,7 @@ function connectStream(conversationId) {
   });
   on("computer_use", refreshComputerUse);
   on("subagents", (data) => renderSubagents(data.agents || []));
+  on("subagent_waiting", () => setBusy(true, "Waiting for subagents…"));
   on("agent_message", renderSubagentMessage);
   on("user_message", (data) => {
     const messageId = String(data.message_id || "");
@@ -229,8 +230,18 @@ function connectStream(conversationId) {
   });
 
   on("permission_request", (data) => {
+    if (state.currentPermission?.id === data.id || state.permissionQueue.some((request) => request.id === data.id)) return;
     state.permissionQueue.push(data);
     showNextPermission();
+  });
+
+  on("permission_cancelled", ({ id }) => {
+    state.permissionQueue = state.permissionQueue.filter((request) => request.id !== id);
+    if (state.currentPermission?.id === id) {
+      el.permOverlay.hidden = true;
+      state.currentPermission = null;
+      showNextPermission();
+    }
   });
 
   on("question_request", (data) => {
@@ -311,8 +322,8 @@ function showNextPermission() {
 
   el.permKind.textContent =
     request.kind === "shell"
-      ? "The agent wants to run a shell command."
-      : "The agent wants to write to a file.";
+      ? `${request.agent_name || "The agent"} wants to run a shell command.`
+      : `${request.agent_name || "The agent"} wants to write to a file.`;
   el.permDetail.textContent = request.detail;
   el.permScope.textContent = request.session_scope
     ? `Session scope: ${request.session_scope}`

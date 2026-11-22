@@ -117,9 +117,9 @@ py -3 -m venv .venv
 
 ### Agent profiles and subagents
 
-Open **Customize → Agents** to manage profiles. **General**, **Explorer**, and **Reviewer** are built in. Duplicate a built-in profile or create your own, then select it when starting a chat. Profiles can set instructions, a model, a thinking level, and tool access.
+Open **Customize → Agents** to manage profiles. **General**, **Coder**, **Explorer**, and **Reviewer** are built in. Duplicate a built-in profile or create your own, then select it when starting a chat. Profiles can set instructions, a model, a thinking level, and tool access.
 
-The main agent can delegate up to three read-only subagents at once, check their model, status, and tool-call count, and exchange messages with them. Each worker receives the delegated task and messages addressed to it. The chat shows live status and a stop button for each active worker.
+The main agent can launch up to three subagents at once and automatically pauses after delegation until a result or message arrives. **Coder** and **General** can edit workspace files and use configured MCP tools subject to the chat permissions and parent profile. **Explorer** and **Reviewer** have read-only profiles. The chat shows each worker's model, status, tool-call count, and stop button.
 
 ### Permissions
 

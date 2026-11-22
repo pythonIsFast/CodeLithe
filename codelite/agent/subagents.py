@@ -9,11 +9,10 @@ from tempfile import TemporaryDirectory
 from uuid import uuid4
 
 from ..db.store import Store
-from ..permission.manager import PermissionManager
-from ..permission.modes import Mode
+from ..permission.manager import AgentPermissions, PermissionManager
 from ..tools.base import ToolError
 from .loop import AgentRunner
-from .profiles import AgentProfile, READ_TOOLS
+from .profiles import AgentProfile, CODING_TOOLS
 
 ACTIVE = frozenset({"running", "waiting"})
 
@@ -46,15 +45,19 @@ def _text(args: dict, key: str, limit: int) -> str:
 
 
 class Subagents:
-    def __init__(self, runtime, conversation, profile: AgentProfile, publish) -> None:
+    def __init__(self, runtime, conversation, profile: AgentProfile, publish,
+                 permissions: PermissionManager, user_task: str) -> None:
         self._runtime = runtime
         self._conversation = conversation
-        self._read_tools = READ_TOOLS if profile.tools is None else READ_TOOLS.intersection(profile.tools)
+        self._tools = CODING_TOOLS if profile.tools is None else CODING_TOOLS.intersection(profile.tools)
+        self._permissions = permissions
+        self._user_task = user_task
         self._publish = publish
         self._condition = threading.Condition()
         self._jobs: dict[str, Subagent] = {}
         self._inbox: list[dict] = []
         self._closed = False
+        self._started = False
 
     def snapshot(self) -> list[dict]:
         with self._condition:
@@ -69,12 +72,21 @@ class Subagents:
             messages, self._inbox = self._inbox, []
             return messages
 
-    def wait_for_updates(self) -> None:
+    def wait_for_updates(self, after_tools: bool = False) -> None:
         with self._condition:
-            self._condition.wait_for(lambda: (
-                self._closed or bool(self._inbox)
-                or not any(job.status in ACTIVE for job in self._jobs.values())
-            ))
+            if after_tools and not self._started:
+                return
+            self._started = False
+
+            def has_update():
+                return (
+                    self._closed or bool(self._inbox)
+                    or not any(job.status in ACTIVE for job in self._jobs.values())
+                )
+
+            if not has_update():
+                self._publish("subagent_waiting", {})
+                self._condition.wait_for(has_update)
 
     def _from_child(self, job: Subagent, message: str) -> None:
         event = {**job.summary(), "message": message}
@@ -119,7 +131,7 @@ class Subagents:
                 return job.summary()
             if action == "wait":
                 self._condition.wait_for(
-                    lambda: job.status != "running" or bool(self._inbox) or self._closed, timeout=12,
+                    lambda: job.status not in ACTIVE or bool(self._inbox) or self._closed,
                 )
                 return {**job.summary(), "result": job.result}
             raise ToolError("Unknown subagent action.")
@@ -136,6 +148,7 @@ class Subagents:
         self._jobs[job.id] = job
         job.thread = threading.Thread(target=self._run, args=(job, task), daemon=True)
         job.thread.start()
+        self._started = True
         self._notify()
         return job.summary()
 
@@ -185,15 +198,17 @@ class Subagents:
             with TemporaryDirectory(prefix="codelite-subagent-") as folder:
                 store = Store(Path(folder) / "chat.sqlite")
                 child = store.create_conversation(
-                    workspace=self._conversation.workspace, model=job.model, permission_mode=Mode.ASK.value,
+                    workspace=self._conversation.workspace, model=job.model, permission_mode=self._permissions.mode.value,
                     reasoning_effort=job.profile.effort,
                 )
-                allowed = self._read_tools if job.profile.tools is None else self._read_tools.intersection(job.profile.tools)
+                allowed = self._tools if job.profile.tools is None else self._tools.intersection(job.profile.tools)
                 runner = AgentRunner(
-                    self._runtime.session, store, child, PermissionManager(Mode.ASK, lambda *_: None),
+                    self._runtime.session, store, child,
+                    AgentPermissions(self._permissions, job.profile.name, self._user_task),
                     publish, self._runtime.config,
                     agent_instructions=(
-                        "You are a read-only subagent. Report evidence to the main agent. "
+                        "You are a subagent. Work only on the delegated task using the tools available to you. "
+                        "Coordinate shared files with the main agent before editing them. "
                         "Use agent_message to send findings or ask the main agent for clarification.\n"
                         + job.profile.instructions
                     ),
@@ -231,6 +246,8 @@ class Subagents:
             job.status = "cancelled"
             if job.runner:
                 job.runner.cancel()
+            if not self._closed:
+                self._from_child(job, "This subagent was stopped.")
             self._notify()
             return True
 
