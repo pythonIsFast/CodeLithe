@@ -43,6 +43,7 @@ from ..provider.opencode_go import GO_REASONING_EFFORTS, is_go_model
 from ..provider.pollinations import POLLINATIONS_MODEL
 from ..provider.session import Session
 from ..questions import QuestionManager
+from .desktop import DesktopControl
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,7 @@ class Runtime:
     def __init__(self, config: AppConfig | None = None) -> None:
         self.config = config or AppConfig()
         self.store = Store(self.config.db_path)
+        self.desktop = DesktopControl()
         self.session = Session(
             ProviderConfig(auth_file_path=self.config.data_dir / "auth.json")
         )
@@ -184,6 +186,7 @@ class Runtime:
 
     def delete_conversation(self, conversation_id: str) -> None:
         self.cancel_run(conversation_id)
+        self.desktop.disable(conversation_id)
         self.store.delete_conversation(conversation_id)
         with self._lock:
             self._conversations.pop(conversation_id, None)
@@ -305,6 +308,7 @@ class Runtime:
                 self._activity_subscribers.remove(wakeup)
 
     def publish(self, conversation_id: str, event: str, data: dict[str, Any]) -> None:
+        self.desktop.record(conversation_id, event, data)
         """Fan an event out to every UI stream watching this conversation."""
         if event in ACTIVITY_EVENTS:
             self._update_activity(conversation_id, event, data.get("id", ""))
@@ -350,6 +354,8 @@ class Runtime:
         user_text: str,
         attachments: list[dict[str, str]] | None = None,
         message_id: str | None = None,
+        *,
+        allow_desktop: bool = False,
     ) -> None:
         state = self._state_for(conversation)
         with state.lock:
@@ -366,6 +372,7 @@ class Runtime:
                     cid, event, data
                 ),
                 config=self.config,
+                computer_use=self.desktop.for_run(conversation.id) if allow_desktop else None,
             )
             state.runner = runner
             thread = threading.Thread(
@@ -377,6 +384,29 @@ class Runtime:
             state.thread = thread
             self._begin_activity(conversation.id)
             thread.start()
+
+    def set_computer_use(self, conversation: Conversation, enabled: bool) -> None:
+        cid = conversation.id
+        if not enabled:
+            if self.desktop.disable(cid):
+                self.cancel_run(cid)
+                self.publish(cid, "computer_use", {"enabled": False})
+            return
+        if self.is_busy(conversation):
+            raise RunInProgress("Wait for the current turn to finish before enabling Computer Use.")
+
+        def send(text: str) -> None:
+            if self.desktop.owner() != cid:
+                return
+            try:
+                latest = self.store.get_conversation(cid)
+                if latest is not None:
+                    self.start_run(latest, text, allow_desktop=True)
+            except RunInProgress:
+                self.desktop.record(cid, "desktop_notice", {"message": "Wait for the current turn to finish."})
+
+        self.desktop.enable(cid, lambda: self.set_computer_use(conversation, False), send)
+        self.publish(cid, "computer_use", {"enabled": True})
 
     def steer_run(
         self, conversation: Conversation, text: str, message_id: str | None = None

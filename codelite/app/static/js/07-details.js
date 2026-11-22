@@ -84,6 +84,7 @@ function startNewSession(workspace = null) {
     fast: el.fastToggle.getAttribute("aria-pressed") === "true",
     flex: false,
   };
+  renderComputerUse();
 
   resetLive();
   state.permissionQueue = [];

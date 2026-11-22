@@ -364,6 +364,8 @@
 }
 .compact-button:hover { background: var(--bg-hover); color: var(--text); }
 .compact-button:disabled { opacity: .35; cursor: default; }
+#computer-use[hidden] { display: none; }
+#computer-use[aria-pressed="true"] { color: var(--accent-strong); background: var(--bg-hover); }
 
 .usage-ring { flex: 0 0 auto; overflow: visible; }
 .usage-ring-track { color: var(--border-strong); }

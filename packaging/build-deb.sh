@@ -43,7 +43,7 @@ Section: devel
 Priority: optional
 Architecture: all
 Maintainer: pythonIsFast <pythonIsFast@users.noreply.github.com>
-Depends: python3 (>= 3.10), python3-gi, python3-gi-cairo, gir1.2-gtk-3.0, gir1.2-webkit2-4.1 | gir1.2-webkit2-4.0
+Depends: python3 (>= 3.10), python3-gi, python3-gi-cairo, gir1.2-gtk-3.0, gir1.2-webkit2-4.1 | gir1.2-webkit2-4.0, libxtst6
 Homepage: https://github.com/pythonIsFast/CodeLithe
 Description: Lightweight coding agent for your ChatGPT subscription
  CodeLithe is a small coding agent that opens in a native window and works on

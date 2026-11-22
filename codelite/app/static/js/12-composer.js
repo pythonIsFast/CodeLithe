@@ -155,6 +155,56 @@ async function addPastedFiles(files) {
   }
 }
 
+let computerUseOwner = null;
+let computerUseAvailable = false;
+
+function renderComputerUse() {
+  const button = $("computer-use");
+  button.hidden = !computerUseAvailable;
+  const armed = Boolean(state.draft?.computerUse);
+  button.setAttribute("aria-pressed", String(Boolean(computerUseOwner || armed)));
+  button.textContent = computerUseOwner ? "Turn off Computer Use" : "Computer Use";
+  button.title = computerUseOwner
+    ? "Stop the session and revoke desktop access"
+    : "Control this desktop using an image-capable model";
+}
+
+async function refreshComputerUse() {
+  const api = window.pywebview?.api;
+  if (typeof api?.computer_use_status !== "function") return;
+  try {
+    const status = await api.computer_use_status();
+    computerUseAvailable = status.available;
+    computerUseOwner = status.owner;
+    renderComputerUse();
+  } catch {
+    // The native window may be closing.
+  }
+}
+
+async function setComputerUse(conversationId, enabled) {
+  const status = await window.pywebview.api.set_computer_use(conversationId, enabled);
+  if (status.error) throw new Error(status.error);
+  computerUseOwner = status.owner;
+  renderComputerUse();
+}
+
+async function toggleComputerUse() {
+  try {
+    if (computerUseOwner) {
+      await setComputerUse(computerUseOwner, false);
+    } else if (state.active) {
+      await setComputerUse(state.active.id, true);
+    } else if (state.draft) {
+      state.draft.computerUse = !state.draft.computerUse;
+      if (state.draft.computerUse) toast("Computer Use starts when you send this message.");
+      renderComputerUse();
+    }
+  } catch (error) {
+    toast(error.message, true);
+  }
+}
+
 async function sendMessage() {
   const text = el.prompt.value.trim();
   const draft = state.active ? null : state.draft;
@@ -237,6 +287,15 @@ async function sendMessage() {
         updateDraftControls();
         setBusy(false);
         toast(error.message, true);
+        return;
+      }
+    }
+    if (draft.computerUse) {
+      try {
+        await setComputerUse(conversation.id, true);
+      } catch (error) {
+        toast(error.message, true);
+        setBusy(false);
         return;
       }
     }

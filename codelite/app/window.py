@@ -51,6 +51,8 @@ from ..screenshot import (
     capture_window_png,
     resolve_path,
 )
+from ..tools.base import ToolError
+from .runtime import RunInProgress, Runtime
 from .server import create_app
 
 logger = logging.getLogger(__name__)
@@ -64,11 +66,11 @@ SCREENSHOT_READY_TIMEOUT_SECONDS = 15.0
 SCREENSHOT_DELAY_SECONDS = 2.0
 
 
-def serve_in_background(config: AppConfig) -> threading.Thread:
+def serve_in_background(config: AppConfig, runtime: Runtime | None = None) -> threading.Thread:
     """Bind the local server before opening the window."""
     from werkzeug.serving import make_server
 
-    app = create_app(config)
+    app = create_app(config, runtime)
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
     try:
         # Binding happens here, so the first WebView request can already be
@@ -86,8 +88,28 @@ def serve_in_background(config: AppConfig) -> threading.Thread:
 
 class JsApi:
     """Exposed to the page as ``window.pywebview.api`` -- the one bit of native
-    OS integration the page needs (a real folder picker instead of a typed
-    path), kept to a single method on purpose."""
+    OS integration used by the local window."""
+
+    def __init__(self, runtime: Runtime | None = None) -> None:
+        self._runtime = runtime
+
+    def computer_use_status(self) -> dict[str, Any]:
+        return {
+            "available": bool(self._runtime and self._runtime.desktop.supported()),
+            "owner": self._runtime.desktop.owner() if self._runtime else None,
+        }
+
+    def set_computer_use(self, conversation_id: str, enabled: bool) -> dict[str, Any]:
+        if self._runtime is None or not isinstance(conversation_id, str) or type(enabled) is not bool:
+            return {"error": "Computer Use is unavailable."}
+        conversation = self._runtime.store.get_conversation(conversation_id)
+        if conversation is None:
+            return {"error": "Chat not found."}
+        try:
+            self._runtime.set_computer_use(conversation, enabled)
+        except (RunInProgress, ToolError) as error:
+            return {"error": str(error)}
+        return self.computer_use_status()
 
     def choose_directory(self, start: str | None = None) -> str | None:
         import webview  # noqa: PLC0415 - only reachable once pywebview is running
@@ -292,7 +314,8 @@ def run(
         return 1
 
     try:
-        serve_in_background(config)
+        runtime = Runtime(config)
+        serve_in_background(config, runtime)
     except Exception as error:  # noqa: BLE001 - anything from Flask/create_app startup, not just the port-wait timeout
         logger.error("The CodeLithe server could not start", exc_info=True)
         show_startup_error(str(error))
@@ -382,7 +405,7 @@ def run(
             width=WINDOW_WIDTH,
             height=WINDOW_HEIGHT,
             min_size=(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT),
-            js_api=JsApi(),
+            js_api=JsApi(runtime),
         )
         # webview.start()'s icon is handed straight to System.Drawing.Icon on
         # Windows' WinForms backend, which only accepts the .ico container

@@ -66,6 +66,7 @@ class ToolContext:
     publish: Callable[[str, dict[str, Any]], None] | None = None
     #: Ask this run to switch or report its reasoning effort.
     thinking_control: Callable[[str], str] | None = None
+    computer_use: Callable[[dict[str, Any]], tuple[str, str | None]] | None = None
 
     def __post_init__(self) -> None:
         if self.cwd is None:
@@ -76,7 +77,7 @@ class ToolContext:
         if self.publish is not None:
             self.publish(event, data)
 
-    def add_model_image(self, image_url: str, label: str) -> None:
+    def add_model_image(self, image_url: str, label: str, *, source: str = "view_image") -> None:
         """Give the next model turn a local image without persisting its bytes.
 
         The agent loop consumes these entries for exactly one request. Keeping
@@ -89,7 +90,7 @@ class ToolContext:
                 "content": [
                     {
                         "type": "input_text",
-                        "text": f"The image requested with view_image is attached: {label}",
+                        "text": f"The image requested with {source} is attached: {label}",
                     },
                     {"type": "input_image", "image_url": image_url},
                 ],

@@ -853,6 +853,9 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
         conversation, error = _conversation_or_404(conversation_id)
         if error:
             return error
+        local = not remote_manager().is_remote_host(request.host)
+        if not local and rt().desktop.owner() == conversation_id:
+            return jsonify({"error": "Send messages to this Computer Use session in the local window."}), 403
         body = _body()
         text = str(body.get("text") or "").strip()
         if not text:
@@ -890,7 +893,7 @@ def create_app(config: AppConfig | None = None, runtime: Runtime | None = None) 
             else uuid.uuid4().hex
         )
         try:
-            rt().start_run(conversation, text, attachments, message_id)
+            rt().start_run(conversation, text, attachments, message_id, allow_desktop=local)
         except RunInProgress as busy:
             # Astra receives a correction at the next safe model boundary. A
             # follow-up with uploads still needs a fresh turn because its file

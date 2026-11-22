@@ -86,6 +86,7 @@ class AgentRunner:
         publish: Publisher,
         config: AppConfig,
         questions: QuestionManager | None = None,
+        computer_use: Callable[[dict[str, Any]], tuple[str, str | None]] | None = None,
     ) -> None:
         self._session = session
         self._store = store
@@ -94,6 +95,7 @@ class AgentRunner:
         self._questions = questions
         self._publish = publish
         self._config = config
+        self._computer_use = computer_use
         self._cancelled = threading.Event()
         # HTTP/SSE remains the compatible fallback transport. Astra steering is
         # queued thread-safely and applied at the next safe model boundary when
@@ -254,6 +256,7 @@ class AgentRunner:
             max_tool_output_chars=self._config.max_tool_output_chars,
             publish=self._publish,
             thinking_control=self._control_thinking,
+            computer_use=self._computer_use,
         )
 
         try:
@@ -748,7 +751,10 @@ class AgentRunner:
             ),
             "input": items,
             "tools": [
-                *registry.to_responses_tools(asynchronous=self._run_model == "gpt-6-astra"),
+                *registry.to_responses_tools(
+                    asynchronous=self._run_model == "gpt-6-astra",
+                    computer_use=self._computer_use is not None,
+                ),
                 *(tool.to_responses_tool() for tool in self._local_extensions.tools()),
             ],
         }

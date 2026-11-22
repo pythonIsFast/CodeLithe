@@ -81,10 +81,12 @@ function connectStream(conversationId) {
     });
 
   on("ready", (data) => {
+    refreshComputerUse();
     if (data.busy) setBusy(true);
     else if (state.busy) reconcileRun(conversationId);
     else setBusy(false);
   });
+  on("computer_use", refreshComputerUse);
   on("user_message", (data) => {
     const messageId = String(data.message_id || "");
     const existing = messageId

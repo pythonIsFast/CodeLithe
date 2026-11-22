@@ -10,6 +10,12 @@ function dataTransferHasFiles(dataTransfer) {
 }
 
 function wireEvents() {
+  $("computer-use").addEventListener("click", toggleComputerUse);
+  window.addEventListener("pywebviewready", refreshComputerUse);
+  refreshComputerUse();
+  setInterval(() => {
+    if (computerUseOwner && !document.hidden) refreshComputerUse();
+  }, 1500);
   // Transcript pagination: near the top of the message area, fetch the next
   // older page and prepend it (see `maybeLoadOlderEntries`).
   el.messages.addEventListener("scroll", () => { maybeLoadOlderEntries(); });

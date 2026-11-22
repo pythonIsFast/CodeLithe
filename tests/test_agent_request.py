@@ -32,6 +32,8 @@ from codelite.config import AppConfig
 from codelite.db.store import Store
 from codelite.permission.manager import PermissionManager
 from codelite.permission.modes import Mode
+from codelite.tools import registry
+from codelite.tools.base import ToolError
 from codelite.tools.context import ToolContext
 
 
@@ -120,6 +122,26 @@ def test_auto_safety_denial_returns_the_reason_without_a_permission_request(
     assert [event for event, _ in events] == ["tool_started", "judge_started", "judge_finished", "tool_finished"]
     assert events[-1][1]["ok"] is False
     assert permissions.list_pending() == []
+
+
+def test_computer_use_is_opt_in_and_screenshots_use_the_ephemeral_image_path(tmp_path: Path) -> None:
+    tool = registry.get("computer_use")
+    context = ToolContext(workspace=tmp_path, permissions=PermissionManager(Mode.ASK, lambda *_: None), session=None)
+    assert "computer_use" not in {tool["name"] for tool in registry.to_responses_tools()}
+    assert "computer_use" in {tool["name"] for tool in registry.to_responses_tools(computer_use=True)}
+    try:
+        tool.run({"action": "screenshot"}, context)
+    except ToolError as error:
+        assert "Enable Computer Use" in str(error)
+    else:
+        raise AssertionError("Desktop input must be disabled by default")
+
+    context.computer_use = lambda args: ("Desktop screenshot: 800 × 600 pixels.", "data:image/jpeg;base64,AA==")
+    assert tool.run({"action": "screenshot"}, context) == "Desktop screenshot: 800 × 600 pixels."
+    image, = context.take_model_inputs()
+    assert image["content"][1] == {"type": "input_image", "image_url": "data:image/jpeg;base64,AA=="}
+    assert context.take_model_inputs() == []
+
 
 
 def _runner(
