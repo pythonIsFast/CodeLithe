@@ -175,6 +175,20 @@ jobs:
           # run instead. --simulate installs nothing.
           sudo apt-get install --simulate --no-install-recommends "./$deb"
 
+      - name: Smoke-test the installed desktop window
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y -qq --no-install-recommends xvfb xauth "./dist/code-lite_${VERSION}_all.deb"
+          timeout 40s xvfb-run -a code-lite --port 10598 --data-dir "$RUNNER_TEMP/native-cl" \
+            --screenshot "$RUNNER_TEMP/native-startup.png" --screenshot-delay 0 \
+            2>&1 | tee "$RUNNER_TEMP/native-startup.log"
+          test -s "$RUNNER_TEMP/native-startup.png"
+          if grep -E 'Traceback \(most recent call last\)|webview did not become ready' "$RUNNER_TEMP/native-startup.log"; then
+            exit 1
+          fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: linux

@@ -52,6 +52,7 @@ from ..screenshot import (
     resolve_path,
 )
 from ..tools.base import ToolError
+from ..webview_assets import webview_script_files
 from .runtime import RunInProgress, Runtime
 from .server import create_app
 
@@ -233,7 +234,7 @@ class JsApi:
 
 def _wait_for_app_ready(
     window: Any, timeout: float = SCREENSHOT_READY_TIMEOUT_SECONDS
-) -> None:
+) -> bool:
     """Wait until the page loaded and the UI finished its first ``init()``.
 
     ``js/15-bootstrap.js`` marks ``document.body.dataset.ready`` when startup
@@ -250,7 +251,7 @@ def _wait_for_app_ready(
     while True:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            return
+            return False
         try:
             ready = window.evaluate_js(
                 "document.readyState === 'complete' && "
@@ -259,7 +260,7 @@ def _wait_for_app_ready(
         except Exception:  # noqa: BLE001 - the page may not accept JS yet
             ready = False
         if ready:
-            return
+            return True
         time.sleep(min(0.15, remaining))
 
 
@@ -274,7 +275,8 @@ def _capture_when_ready(
     """
     outcome: dict[str, Any] = {}
     try:
-        _wait_for_app_ready(window)
+        if not _wait_for_app_ready(window):
+            logger.warning("The native webview did not become ready before the screenshot.")
         if delay > 0:
             time.sleep(delay)
         png = capture_window_png(window)
@@ -430,7 +432,8 @@ def run(
         # The callback runs once the native loop is up, on its own thread, and
         # is where the screenshot waits for the page, snapshots it and closes
         # the window again. Without a screenshot the loop simply owns the app.
-        webview.start(**start_call, **start_options)
+        with webview_script_files(webview):
+            webview.start(**start_call, **start_options)
     except Exception as error:  # noqa: BLE001 - the native webview backend can fail in many ways
         # On Windows this is almost always a missing/broken WebView2 Runtime.
         # webview.start() runs the whole native event loop, so any failure in

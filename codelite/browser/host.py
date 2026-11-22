@@ -34,6 +34,7 @@ from typing import Any, Callable, Protocol
 
 from ..screenshot import available as screenshots_available
 from ..screenshot import capture_window_png
+from ..webview_assets import webview_script_files
 
 logger = logging.getLogger(__name__)
 
@@ -567,7 +568,8 @@ def main() -> None:  # pragma: no cover - exercised manually, needs a real displ
         window.events.loaded.wait(20)
         serve(session)
 
-    webview.start(serve_when_loaded, debug=False)
+    with webview_script_files(webview):
+        webview.start(serve_when_loaded, debug=False)
 
 
 if __name__ == "__main__":  # pragma: no cover
