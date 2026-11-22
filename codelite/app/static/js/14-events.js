@@ -19,6 +19,9 @@ function wireEvents() {
   // Transcript pagination: near the top of the message area, fetch the next
   // older page and prepend it (see `maybeLoadOlderEntries`).
   el.messages.addEventListener("scroll", () => { maybeLoadOlderEntries(); });
+  el.messages.addEventListener("load", (event) => {
+    if (state.busy && event.target instanceof HTMLImageElement) scrollDown(true);
+  }, true);
   el.titleButton.addEventListener("click", (event) => {
     event.stopPropagation();
     toggleTitleMenu();

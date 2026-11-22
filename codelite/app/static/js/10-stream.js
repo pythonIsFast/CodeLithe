@@ -5,9 +5,11 @@
 /* -- Live stream ---------------------------------------------------------- */
 
 function setBusy(busy, label = "Working…") {
+  const wasBusy = state.busy;
   state.busy = busy;
   el.statusBar.hidden = !busy;
   el.statusText.textContent = label;
+  if (busy || wasBusy) scrollDown(true);
   updateSendState();
   el.compactContext.disabled = busy || !state.active;
   if (busy && !state.busyWatchdog) {
@@ -214,6 +216,7 @@ function connectStream(conversationId) {
       state.liveTodos = append(todoCard(todos));
     }
     finalizeLiveText();
+    scrollDown();
   });
 
   on("judge_started", () => setBusy(true, "Safety model is reviewing the command…"));

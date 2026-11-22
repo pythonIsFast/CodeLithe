@@ -138,17 +138,17 @@ function formatMarkdown(text) {
     .join("");
 }
 
-function atBottom() {
+function followsChatOutput() {
   const box = el.messages;
-  return box.scrollHeight - box.scrollTop - box.clientHeight < 120;
+  return state.busy || box.scrollHeight - box.scrollTop - box.clientHeight < 120;
 }
 
 function scrollDown(force = false) {
-  if (force || atBottom()) el.messages.scrollTop = el.messages.scrollHeight;
+  if (force || followsChatOutput()) el.messages.scrollTop = el.messages.scrollHeight;
 }
 
 function append(node) {
-  const stick = atBottom();
+  const stick = followsChatOutput();
   el.messages.appendChild(node);
   if (stick) scrollDown(true);
   return node;

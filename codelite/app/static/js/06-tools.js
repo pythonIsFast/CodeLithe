@@ -129,7 +129,7 @@ function paintLiveText() {
   state.liveTextPending = "";
   state.liveReasoningPending = "";
   if (!text && !reason) return;
-  const stick = atBottom();
+  const stick = followsChatOutput();
   if (text && state.liveText?.isConnected) state.liveText.firstChild.appendData(text);
   if (reason && state.liveReasoning?.isConnected) state.liveReasoning.firstChild.appendData(reason);
   if (stick) scrollDown(true);
@@ -142,7 +142,7 @@ function finalizeLiveText() {
   state.liveText = null;
   if (!bubble || !bubble.isConnected) return;
   if (bubble.querySelector(".msg-foot")) return;
-  const stick = atBottom();
+  const stick = followsChatOutput();
   bubble.dataset.raw = bubble.textContent;
   // Render Markdown once at the message boundary. Replacing the whole DOM
   // on every chunk makes even a short stream redraw and relayout repeatedly.
@@ -483,8 +483,9 @@ function appendToolCallInto(sink, row) {
 }
 
 function appendToolCall(row) {
+  const stick = followsChatOutput();
   appendToolCallInto(el.messages, row);
-  scrollDown();
+  if (stick) scrollDown(true);
   return row;
 }
 

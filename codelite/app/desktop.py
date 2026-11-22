@@ -242,7 +242,17 @@ class DesktopPanel:
 
         entry.connect("activate", submit)
 
+        adjustment = transcript.get_vadjustment()
+        was_busy = follow_output = False
+
+        def scroll_to_end(scroll) -> None:
+            if follow_output:
+                scroll.set_value(scroll.get_upper() - scroll.get_page_size())
+
+        adjustment.connect("changed", scroll_to_end)
+
         def refresh() -> bool:
+            nonlocal was_busy, follow_output
             with lock:
                 lines = (
                     chat.action,
@@ -251,9 +261,16 @@ class DesktopPanel:
                     "Agent · " + chat.reply if chat.reply else "Waiting for a reply.",
                 )
                 busy = chat.busy
+            # The last text update and run_finished can share a GTK refresh.
+            follow_output = busy or was_busy
+            changed = busy != was_busy
+            was_busy = busy
             for label, text in zip((current, last_action, task, reply), lines):
                 if label.get_text() != text:
                     label.set_text(text)
+                    changed = True
+            if changed:
+                scroll_to_end(adjustment)
             entry.set_sensitive(not busy)
             return True
 
