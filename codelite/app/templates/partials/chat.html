@@ -13,11 +13,17 @@
           </section>
 
           <div class="composer-area">
-            <div id="subagents-panel" class="subagents-panel" hidden>
-              <strong>Subagents</strong>
-              <div id="subagent-rows" aria-live="polite"></div>
-              <div id="subagent-messages"></div>
-            </div>
+            <details id="subagents-panel" class="subagents-panel" hidden>
+              <summary class="subagents-toggle">
+                <svg class="subagents-icon" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round">
+                  <path d="M6 2h4v4H6zM2 10h4v4H2zM10 10h4v4h-4zM8 6v2M4 10V8h8v2"/>
+                </svg>
+                <strong>Subagents</strong>
+                <span id="subagent-counts"></span>
+                <span class="subagent-chevron" aria-hidden="true"></span>
+              </summary>
+              <div id="subagent-rows" class="subagent-rows"></div>
+            </details>
             <div class="status-bar" id="status-bar" hidden>
               <span class="status-dot" aria-hidden="true"></span>
               <span id="status-text">Working…</span>

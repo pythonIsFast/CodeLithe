@@ -23,6 +23,7 @@ class Subagent:
     id: str
     profile: AgentProfile
     model: str
+    task_label: str
     status: str = "running"
     tool_calls: int = 0
     inbox: list[dict] = field(default_factory=list)
@@ -57,7 +58,7 @@ class Subagents:
 
     def snapshot(self) -> list[dict]:
         with self._condition:
-            return [job.summary() for job in self._jobs.values()]
+            return [{**job.summary(), "task": job.task_label} for job in self._jobs.values()]
 
     def _notify(self) -> None:
         self._condition.notify_all()
@@ -128,7 +129,10 @@ class Subagents:
             raise ToolError("This run has reached its 16-subagent limit.")
         if sum(job.thread is not None and job.thread.is_alive() for job in self._jobs.values()) >= 3:
             raise ToolError("Three subagents are already active. Wait for one to finish.")
-        job = Subagent(uuid4().hex, profile, profile.model or main_model)
+        label = " ".join(task.split())
+        if len(label) > 180:
+            label = label[:179].rstrip() + "…"
+        job = Subagent(uuid4().hex, profile, profile.model or main_model, label)
         self._jobs[job.id] = job
         job.thread = threading.Thread(target=self._run, args=(job, task), daemon=True)
         job.thread.start()

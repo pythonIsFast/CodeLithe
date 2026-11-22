@@ -139,37 +139,87 @@ function wireAgentProfiles() {
   });
 }
 
-function renderSubagents(agents) {
-  const rows = $("subagent-rows");
-  rows.replaceChildren();
-  $("subagents-panel").hidden = !agents.length;
-  if (!agents.length) $("subagent-messages").replaceChildren();
+const SUBAGENT_STATUS = {
+  running: "Running", waiting: "Waiting", completed: "Done", failed: "Failed", cancelled: "Stopped",
+};
+const subagentRows = new Map();
+
+function createSubagentRow(agent) {
+  const card = document.createElement("article");
+  card.className = "subagent-card";
+  card.innerHTML = `
+    <details class="subagent-details">
+      <summary class="subagent-summary">
+        <span class="subagent-indicator" aria-hidden="true"></span>
+        <span class="subagent-label"><strong></strong><span></span></span>
+        <span class="subagent-status"></span>
+        <span class="subagent-chevron" aria-hidden="true"></span>
+      </summary>
+      <div class="subagent-information">
+        <div class="subagent-meta"></div>
+        <div class="subagent-messages"></div>
+      </div>
+    </details>
+    <button type="button" class="stop subagent-stop">Stop</button>`;
+  const stop = card.querySelector("button");
   const conversation = state.active?.id;
-  for (const agent of agents) {
-    const row = document.createElement("div");
-    row.className = "subagent-row";
-    row.dataset.status = agent.status;
-    const text = document.createElement("span");
-    const model = state.modelLabels?.[agent.model] || agent.model;
-    text.textContent = `${agent.name} · ${model} · ${agent.status} · ${agent.tool_calls} tool calls`;
-    row.append(text);
-    if (conversation && ["running", "waiting"].includes(agent.status)) {
-      const stop = document.createElement("button");
-      stop.type = "button";
-      stop.className = "compact-button";
-      stop.textContent = "Stop";
-      stop.addEventListener("click", () => post(`/api/conversations/${conversation}/subagents/${agent.id}/stop`, {})
-        .catch((error) => toast(error.message, true)));
-      row.append(stop);
+  stop.setAttribute("aria-label", `Stop ${agent.name}${agent.task ? `: ${agent.task}` : ""}`);
+  stop.addEventListener("click", async () => {
+    stop.disabled = true;
+    try {
+      await post(`/api/conversations/${conversation}/subagents/${agent.id}/stop`, {});
+    } catch (error) {
+      toast(error.message, true);
+    } finally {
+      stop.disabled = false;
     }
-    rows.append(row);
+  });
+  $("subagent-rows").append(card);
+  return {
+    card, stop,
+    title: card.querySelector(".subagent-label strong"),
+    profile: card.querySelector(".subagent-label span"),
+    status: card.querySelector(".subagent-status"),
+    meta: card.querySelector(".subagent-meta"),
+    messages: card.querySelector(".subagent-messages"),
+  };
+}
+
+function renderSubagents(agents) {
+  const panel = $("subagents-panel");
+  panel.hidden = !agents.length;
+  if (!agents.length) {
+    panel.open = false;
+    subagentRows.clear();
+    $("subagent-rows").replaceChildren();
+    return;
   }
+  const counts = {};
+  for (const agent of agents) {
+    const row = subagentRows.get(agent.id) || createSubagentRow(agent);
+    subagentRows.set(agent.id, row);
+    counts[agent.status] = (counts[agent.status] || 0) + 1;
+    row.card.dataset.status = agent.status;
+    row.title.textContent = agent.task || agent.name;
+    const model = state.modelLabels?.[agent.model] || agent.model;
+    row.profile.textContent = [agent.task && agent.name, model].filter(Boolean).join(" · ");
+    row.status.textContent = SUBAGENT_STATUS[agent.status] || agent.status;
+    row.meta.textContent = `${agent.tool_calls} tool call${agent.tool_calls === 1 ? "" : "s"}`;
+    row.stop.hidden = !state.active || !["running", "waiting"].includes(agent.status);
+  }
+  $("subagent-counts").textContent = Object.entries(SUBAGENT_STATUS)
+    .filter(([key]) => counts[key]).map(([key, label]) => `${counts[key]} ${label.toLowerCase()}`).join(" · ");
 }
 
 function renderSubagentMessage(data) {
-  const messages = $("subagent-messages");
-  const row = document.createElement("div");
-  row.textContent = `${data.name}: ${data.message}`;
-  messages.append(row);
-  if (messages.childElementCount > 4) messages.firstElementChild.remove();
+  const row = subagentRows.get(data.id);
+  if (!row || !data.message) return;
+  const entry = document.createElement("div");
+  const label = document.createElement("strong");
+  label.textContent = data.status === "completed" ? "Result" : data.status === "failed" ? "Error" : data.name;
+  const text = document.createElement("div");
+  text.textContent = data.message;
+  entry.append(label, text);
+  row.messages.append(entry);
+  if (row.messages.childElementCount > 4) row.messages.firstElementChild.remove();
 }

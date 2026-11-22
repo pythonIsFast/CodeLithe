@@ -239,6 +239,7 @@ const CATEGORY_ICON_PATHS = {
   showcase: ["M1.5 8S4 4 8 4s6.5 4 6.5 4-2.5 4-6.5 4S1.5 8 1.5 8z", "M8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"],
   ask: ["M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12z", "M6.2 6.2A1.9 1.9 0 0 1 9.9 6.8c0 1.3-1.9 1.5-1.9 2.7", "M8 11.4h.01"],
   tool: ["M4 8h.01", "M8 8h.01", "M12 8h.01"],
+  agents: ["M6 2h4v4H6zM2 10h4v4H2zM10 10h4v4h-4zM8 6v2M4 10V8h8v2"],
 };
 
 function categoryIcon(category) {
@@ -275,6 +276,7 @@ const TOOL_CATEGORY = {
   edit_file: "write",
   shell: "shell",
   extensions: "extension",
+  subagents: "agents",
   web_search: "websearch",
   web_fetch: "webfetch",
   code_intelligence: "intel",
@@ -313,6 +315,14 @@ const TOOL_PRESENTATION = {
   code_intelligence: { verb: "Code intelligence", text: firstText },
   project_memory: { verb: "Memory", text: firstText },
   extensions: { verb: "Extension", text: firstText },
+  subagents: { text: (args) => ({
+    profiles: "Check agent profiles",
+    start: args.task ? `Delegate · ${args.task}` : "Start a subagent",
+    list: "Check subagent status",
+    send: "Message a subagent",
+    wait: "Wait for a subagent",
+    stop: "Stop a subagent",
+  })[args.action] || "Subagents" },
   low_thinking: { verb: "Lower thinking" },
   normal_thinking: { verb: "Restore thinking" },
   "get_thinking-mode": { verb: "Check thinking mode" },
@@ -338,10 +348,12 @@ function toolRow(name, rawArguments) {
   const wrap = document.createElement("div");
   wrap.className = "tool-call running";
   wrap._name = name;
+  wrap._action = args.action;
 
   const head = document.createElement("button");
   head.type = "button";
   head.className = "tool-call-row";
+  head.setAttribute("aria-expanded", "false");
   head.innerHTML =
     `<span class="tool-call-icon">${categoryIcon(toolCategory(name))}</span>` +
     (chip
@@ -361,6 +373,7 @@ function toolRow(name, rawArguments) {
   head.addEventListener("click", () => {
     const open = wrap.classList.toggle("open");
     wrap._body.hidden = !open;
+    head.setAttribute("aria-expanded", String(open));
   });
 
   const sub = document.createElement("div");
@@ -376,6 +389,7 @@ function toolRow(name, rawArguments) {
 
   wrap.append(head, sub, body);
   wrap._sub = sub;
+  wrap._head = head;
   wrap._body = body;
   wrap._pre = pre;
   return wrap;
@@ -397,16 +411,32 @@ function outputSummary(name, output) {
   return first ? truncate(first) : "Done";
 }
 
+function subagentToolOutput(action, output) {
+  const data = safeArgs(output);
+  if (Array.isArray(data)) {
+    const summary = `${data.length} ${action === "profiles" ? "profiles" : "subagents"}`;
+    const details = data.map((agent) => [agent.name, SUBAGENT_STATUS[agent.status]].filter(Boolean).join(" · "));
+    return { summary, details: details.join("\n") || summary };
+  }
+  if (!data.name || !data.status) return null;
+  const summary = `${data.name} · ${data.delivered ? "Message sent" : SUBAGENT_STATUS[data.status] || data.status}`;
+  const model = state.modelLabels?.[data.model] || data.model;
+  const details = [summary, model, `${data.tool_calls} tool calls`, data.result].filter(Boolean).join("\n");
+  return { summary, details };
+}
+
 function finishToolRow(row, output, ok) {
   row.classList.remove("running");
   row.classList.toggle("failed", !ok);
-  row._pre.textContent = output || "(no output)";
-  row._sub.textContent = outputSummary(row._name, output);
+  const formatted = ok && row._name === "subagents" ? subagentToolOutput(row._action, output) : null;
+  row._pre.textContent = formatted?.details || output || "(no output)";
+  row._sub.textContent = formatted?.summary || outputSummary(row._name, output);
   row._sub.hidden = false;
-  if (!ok) {
+  if (!ok && row._name !== "subagents") {
     // A blocked call is worth reading immediately, like the reference desktop agent does.
     row.classList.add("open");
     row._body.hidden = false;
+    row._head.setAttribute("aria-expanded", "true");
   }
 }
 

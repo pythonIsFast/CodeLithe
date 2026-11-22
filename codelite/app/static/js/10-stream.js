@@ -142,7 +142,7 @@ function connectStream(conversationId) {
     state.liveReasoning = null;
     const row = appendToolCall(toolRow(data.name || "tool", data.arguments));
     state.toolCards.set(data.call_id, { row, name: data.name, arguments: data.arguments });
-    setBusy(true, `Running ${data.name}…`);
+    setBusy(true, data.name === "subagents" ? "Coordinating subagents…" : `Running ${data.name}…`);
   });
 
   on("tool_finished", (data) => {
